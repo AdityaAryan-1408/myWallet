@@ -22,6 +22,16 @@ export interface CategorySpend {
   percentage: number;
 }
 
+export interface TransactionWithDetails extends Transaction {
+  category_name?: string | null;
+  category_color?: string | null;
+  category_icon?: string | null;
+  subcategory_name?: string | null;
+  account_name?: string | null;
+  dest_account_name?: string | null;
+  credit_card_name?: string | null;
+}
+
 export const TransactionRepository = {
   getRecent(limit: number = 20): Transaction[] {
     const db = getDatabase();
@@ -233,5 +243,52 @@ export const TransactionRepository = {
     // automatically decreases the dynamically calculated card outstanding in CreditCardRepository!
 
     db.runSync('DELETE FROM transactions WHERE id = ?;', [id]);
+  },
+
+  getAllWithDetails(): TransactionWithDetails[] {
+    const db = getDatabase();
+    return db.getAllSync<TransactionWithDetails>(
+      `SELECT 
+        t.*,
+        c.name as category_name,
+        c.color as category_color,
+        c.icon as category_icon,
+        sc.name as subcategory_name,
+        a.name as account_name,
+        da.name as dest_account_name,
+        cc.name as credit_card_name
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      LEFT JOIN categories sc ON t.subcategory_id = sc.id
+      LEFT JOIN accounts a ON t.account_id = a.id
+      LEFT JOIN accounts da ON t.dest_account_id = da.id
+      LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
+      ORDER BY t.date DESC, t.time DESC, t.created_at DESC;`
+    );
+  },
+
+  update(updatedTx: Transaction): void {
+    const db = getDatabase();
+    const oldTx = db.getFirstSync<Transaction>('SELECT * FROM transactions WHERE id = ?;', [updatedTx.id]);
+    if (!oldTx) return;
+
+    // Revert old transaction financial impact
+    this.delete(updatedTx.id);
+
+    // Re-create transaction with updated details
+    this.create({
+      id: updatedTx.id,
+      type: updatedTx.type,
+      amount: updatedTx.amount,
+      account_id: updatedTx.account_id,
+      dest_account_id: updatedTx.dest_account_id,
+      credit_card_id: updatedTx.credit_card_id,
+      category_id: updatedTx.category_id,
+      subcategory_id: updatedTx.subcategory_id,
+      date: updatedTx.date,
+      time: updatedTx.time,
+      note: updatedTx.note,
+      expression: updatedTx.expression,
+    });
   },
 };

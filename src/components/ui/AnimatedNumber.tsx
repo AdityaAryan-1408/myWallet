@@ -9,7 +9,7 @@
  * - Monospaced JetBrains Mono typography with zero horizontal jitter
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TextStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -32,20 +32,20 @@ function RollingDigit({ digit, height, width, fontSize, textStyle }: RollingDigi
   const isNumber = !isNaN(parseInt(digit, 10));
   const numericValue = isNumber ? parseInt(digit, 10) : 0;
   const translateY = useSharedValue(-numericValue * height);
-  const prevDigitRef = useRef(numericValue);
+  const prevDigit = useSharedValue(numericValue);
 
   useEffect(() => {
     if (!isNumber) return;
 
-    if (prevDigitRef.current !== numericValue) {
-      prevDigitRef.current = numericValue;
+    if (prevDigit.value !== numericValue) {
+      prevDigit.value = numericValue;
       translateY.value = withSpring(-numericValue * height, {
         damping: 24,
         stiffness: 260,
         mass: 0.6,
       });
     }
-  }, [numericValue, height, isNumber, translateY]);
+  }, [numericValue, height, isNumber, translateY, prevDigit]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

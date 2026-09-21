@@ -29,6 +29,9 @@ const mockDb = {
     if (sql.includes('FROM people_debts')) {
       return SEED_DATA.debts as unknown as T[];
     }
+    if (sql.includes('FROM budgets')) {
+      return SEED_DATA.budgets as unknown as T[];
+    }
     return [];
   },
   getFirstSync: <T>(sql: string, _params?: any[]): T | null => {

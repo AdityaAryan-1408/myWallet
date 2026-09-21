@@ -14,8 +14,11 @@ import {
   ReservationRepository,
   TransactionRepository,
   SettingsRepository,
+  BudgetRepository,
   CategorySpend,
   MonthlyTotals,
+  BudgetWithProgress,
+  OverallBudgetProgress,
 } from '@/repositories';
 import {
   calculateAvailableToSpend,
@@ -40,12 +43,17 @@ interface FinancialState {
   creditCards: CreditCard[];
   reservations: Reservation[];
   recentTransactions: Transaction[];
+  budgets: BudgetWithProgress[];
+  overallBudget: OverallBudgetProgress | null;
 
   // Actions
   initialize: () => void;
   refreshFinancials: () => void;
   setUserName: (name: string) => void;
   deleteTransaction: (id: string) => void;
+  deleteCard: (id: string) => void;
+  setBudget: (categoryId: string, amount: number) => void;
+  deleteBudget: (id: string) => void;
 }
 
 export const useFinancialStore = create<FinancialState>((set, get) => ({
@@ -67,6 +75,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   creditCards: [],
   reservations: [],
   recentTransactions: [],
+  budgets: [],
+  overallBudget: null,
 
   initialize: () => {
     try {
@@ -98,6 +108,33 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
     }
   },
 
+  deleteCard: (id: string) => {
+    try {
+      CreditCardRepository.delete(id);
+      get().refreshFinancials();
+    } catch (error) {
+      console.error('Error deleting credit card:', error);
+    }
+  },
+
+  setBudget: (categoryId: string, amount: number) => {
+    try {
+      BudgetRepository.setBudget(categoryId, amount);
+      get().refreshFinancials();
+    } catch (error) {
+      console.error('Error saving budget target:', error);
+    }
+  },
+
+  deleteBudget: (id: string) => {
+    try {
+      BudgetRepository.deleteBudget(id);
+      get().refreshFinancials();
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+    }
+  },
+
   refreshFinancials: () => {
     try {
       const now = new Date();
@@ -110,6 +147,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const recentTransactions = TransactionRepository.getRecent(10);
       const monthlyTotals = TransactionRepository.getMonthlyTotals(currentYearMonth);
       const categorySpends = TransactionRepository.getCategoryMonthlySpend(currentYearMonth);
+      const budgets = BudgetRepository.getAllWithProgress(currentYearMonth);
+      const overallBudget = BudgetRepository.getOverallBudgetProgress(currentYearMonth);
 
       const totalBankCashBalance = AccountRepository.getTotalBankCashBalance();
       const totalCreditObligations = CreditCardRepository.getTotalCreditObligations();
@@ -138,6 +177,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
         creditCards,
         reservations,
         recentTransactions,
+        budgets,
+        overallBudget,
       });
     } catch (error) {
       console.error('Error refreshing financials:', error);

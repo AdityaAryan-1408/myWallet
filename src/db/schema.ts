@@ -102,6 +102,16 @@ export interface DashboardNote {
   updated_at: string;
 }
 
+export interface Budget {
+  id: string;
+  category_id: string;
+  amount: number;
+  period: 'monthly';
+  is_active: number; // 0 or 1
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserSetting {
   key: string;
   value: string;
@@ -220,6 +230,18 @@ CREATE TABLE IF NOT EXISTS user_settings (
 );
 `;
 
+export const CREATE_BUDGETS_TABLE = `
+CREATE TABLE IF NOT EXISTS budgets (
+  id TEXT PRIMARY KEY,
+  category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  period TEXT NOT NULL DEFAULT 'monthly',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export const CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -227,4 +249,5 @@ CREATE INDEX IF NOT EXISTS idx_transactions_card ON transactions(credit_card_id)
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_people_debts_settled ON people_debts(is_settled);
+CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id);
 `;

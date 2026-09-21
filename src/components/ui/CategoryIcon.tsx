@@ -29,6 +29,11 @@ import {
   Wallet,
   CreditCard,
   Building,
+  Tag,
+  Dumbbell,
+  Music,
+  Gamepad2,
+  Book,
   LucideIcon,
 } from 'lucide-react-native';
 
@@ -56,6 +61,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Wallet,
   CreditCard,
   Building,
+  Tag,
+  Dumbbell,
+  Music,
+  Gamepad2,
+  Book,
 };
 
 interface CategoryIconProps {

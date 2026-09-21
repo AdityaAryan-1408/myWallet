@@ -60,6 +60,12 @@ export interface SeedData {
     direction: 'i_owe' | 'they_owe';
     reason: string;
   }>;
+  budgets: Array<{
+    id: string;
+    category_id: string;
+    amount: number;
+    period: 'monthly';
+  }>;
 }
 
 export const SEED_DATA: SeedData = {
@@ -125,5 +131,14 @@ export const SEED_DATA: SeedData = {
   debts: [
     { id: 'debt_1', person_name: 'Rahul Sharma', amount: 450, direction: 'they_owe', reason: 'Split dinner bill at Dominoes' },
     { id: 'debt_2', person_name: 'Aman Verma', amount: 200, direction: 'i_owe', reason: 'Chai & snacks' },
+  ],
+
+  // Monthly category budgets
+  budgets: [
+    { id: 'bgt_food', category_id: 'cat_food', amount: 600, period: 'monthly' },
+    { id: 'bgt_transport', category_id: 'cat_transport', amount: 400, period: 'monthly' },
+    { id: 'bgt_entertainment', category_id: 'cat_entertainment', amount: 250, period: 'monthly' },
+    { id: 'bgt_shopping', category_id: 'cat_shopping', amount: 800, period: 'monthly' },
+    { id: 'bgt_bills', category_id: 'cat_bills', amount: 700, period: 'monthly' },
   ],
 };

@@ -1,13 +1,13 @@
 /**
  * MyWallet — Root Layout
  * 
- * Sets up font loading, splash screen, and the tab navigation structure.
- * Forces dark mode and applies the Zenith Obsidian theme.
+ * Sets up font loading, splash screen, SQLite initialization, and Stack navigation.
+ * Forces dark mode and applies the Zenith Obsidian theme throughout.
  */
 
 import React, { useEffect } from 'react';
-import { View, StatusBar, StyleSheet } from 'react-native';
-import { Tabs, useRouter } from 'expo-router';
+import { StatusBar, StyleSheet } from 'react-native';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import {
@@ -27,16 +27,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 
-import { BottomTabBar } from '@/components/navigation/BottomTabBar';
-import { FAB } from '@/components/navigation/FAB';
 import { Colors, PaperTheme } from '@/theme';
 import { useFinancialStore } from '@/stores';
 
-// Prevent the splash screen from auto-hiding before fonts load
+// Prevent splash screen from auto-hiding before fonts load
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const router = useRouter();
   const [fontsLoaded, fontError] = useFonts({
     // Plus Jakarta Sans
     PlusJakartaSans: PlusJakartaSans_400Regular,
@@ -71,26 +68,32 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <PaperProvider theme={PaperTheme}>
           <StatusBar barStyle="light-content" backgroundColor={Colors.surface} />
-          <View style={styles.root}>
-            <Tabs
-              tabBar={(props) => <BottomTabBar {...props} />}
-              screenOptions={{
-                headerShown: false,
-                tabBarStyle: { display: 'none' },
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Colors.surface },
+              animation: 'fade',
+            }}
+          >
+            {/* Main Tabs Pager Screen */}
+            <Stack.Screen name="index" />
+
+            {/* Add Transaction Modal Screen */}
+            <Stack.Screen
+              name="add-transaction"
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
               }}
-            >
-              <Tabs.Screen name="index" options={{ title: 'Home' }} />
-              <Tabs.Screen name="activity" options={{ title: 'Activity' }} />
-              <Tabs.Screen name="budgets" options={{ title: 'Budgets' }} />
-              <Tabs.Screen name="cards" options={{ title: 'Cards' }} />
-              <Tabs.Screen name="more" options={{ title: 'More' }} />
-              {/* Keep default explore route hidden from bottom tabs */}
-              <Tabs.Screen name="explore" options={{ href: null }} />
-              {/* Add transaction entry screen */}
-              <Tabs.Screen name="add-transaction" options={{ href: null }} />
-            </Tabs>
-            <FAB onPress={() => router.push('/add-transaction')} />
-          </View>
+            />
+
+            {/* Hidden redirect routes */}
+            <Stack.Screen name="activity" />
+            <Stack.Screen name="budgets" />
+            <Stack.Screen name="cards" />
+            <Stack.Screen name="more" />
+            <Stack.Screen name="explore" />
+          </Stack>
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

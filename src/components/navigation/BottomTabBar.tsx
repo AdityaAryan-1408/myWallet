@@ -49,9 +49,12 @@ interface RouteItem {
 }
 
 export interface BottomTabBarProps {
-  state: any;
-  descriptors: any;
-  navigation: any;
+  activeIndex?: number;
+  onTabPress?: (index: number) => void;
+  onTabLongPress?: (index: number) => void;
+  state?: any;
+  descriptors?: any;
+  navigation?: any;
   insets?: any;
 }
 
@@ -59,7 +62,7 @@ interface TabItemProps {
   routeName: string;
   isFocused: boolean;
   onPress: () => void;
-  onLongPress: () => void;
+  onLongPress?: () => void;
 }
 
 function TabItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
@@ -111,13 +114,51 @@ function TabItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
   );
 }
 
-export function BottomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+const DEFAULT_TABS = ['index', 'activity', 'budgets', 'cards', 'more'] as const;
+
+export function BottomTabBar({
+  activeIndex,
+  onTabPress,
+  onTabLongPress,
+  state,
+  navigation,
+}: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
-  // Filter out any hidden routes like 'explore'
-  const visibleRoutes = state.routes.filter(
+  // Controlled mode (standalone pager)
+  if (activeIndex !== undefined && onTabPress !== undefined) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { paddingBottom: Math.max(insets.bottom, 8) },
+        ]}
+      >
+        {/* Hairline top border */}
+        <View style={styles.topBorder} />
+
+        <View style={styles.tabsRow}>
+          {DEFAULT_TABS.map((routeName, idx) => {
+            const isFocused = activeIndex === idx;
+            return (
+              <TabItem
+                key={routeName}
+                routeName={routeName}
+                isFocused={isFocused}
+                onPress={() => onTabPress(idx)}
+                onLongPress={() => onTabLongPress?.(idx)}
+              />
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  // Legacy React Navigation mode
+  const visibleRoutes = state?.routes?.filter(
     (route: RouteItem) => TAB_CONFIGS[route.name] !== undefined
-  );
+  ) || [];
 
   return (
     <View

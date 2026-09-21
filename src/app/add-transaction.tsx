@@ -209,6 +209,7 @@ export default function AddTransactionScreen() {
               ]}
               onPress={() => {
                 setType(t);
+                setSelectedSubcategoryId(null);
                 if (t === 'income') {
                   setSelectedCategoryId('cat_salary');
                 } else if (t === 'expense') {

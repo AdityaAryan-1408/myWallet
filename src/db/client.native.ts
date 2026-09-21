@@ -14,6 +14,7 @@ import {
   CREATE_PEOPLE_DEBTS_TABLE,
   CREATE_DASHBOARD_NOTES_TABLE,
   CREATE_USER_SETTINGS_TABLE,
+  CREATE_BUDGETS_TABLE,
   CREATE_INDEXES,
 } from './schema';
 import { SEED_DATA } from './seed';
@@ -60,6 +61,7 @@ export function initDatabase(): void {
     db.execSync(CREATE_PEOPLE_DEBTS_TABLE);
     db.execSync(CREATE_DASHBOARD_NOTES_TABLE);
     db.execSync(CREATE_USER_SETTINGS_TABLE);
+    db.execSync(CREATE_BUDGETS_TABLE);
     db.execSync(CREATE_INDEXES);
 
     // Check if initial categories already exist
@@ -70,6 +72,14 @@ export function initDatabase(): void {
 
     if (categoryCount === 0) {
       seedDatabase(db);
+    } else {
+      // Ensure budgets table is seeded if categories exist but budgets is empty
+      const budgetCountResult = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM budgets;'
+      );
+      if ((budgetCountResult?.count ?? 0) === 0) {
+        seedBudgets(db);
+      }
     }
 
     isInitialized = true;
@@ -200,4 +210,29 @@ function seedDatabase(db: SQLite.SQLiteDatabase): void {
     });
   }
   debtStmt.finalizeSync();
+
+  // Seed Budgets
+  seedBudgets(db);
+}
+
+/**
+ * Seeds default monthly budgets.
+ */
+function seedBudgets(db: SQLite.SQLiteDatabase): void {
+  const now = new Date().toISOString();
+  const bgtStmt = db.prepareSync(
+    `INSERT OR IGNORE INTO budgets (id, category_id, amount, period, is_active, created_at, updated_at)
+     VALUES ($id, $category_id, $amount, $period, 1, $created_at, $updated_at);`
+  );
+  for (const bgt of SEED_DATA.budgets) {
+    bgtStmt.executeSync({
+      $id: bgt.id,
+      $category_id: bgt.category_id,
+      $amount: bgt.amount,
+      $period: bgt.period,
+      $created_at: now,
+      $updated_at: now,
+    });
+  }
+  bgtStmt.finalizeSync();
 }

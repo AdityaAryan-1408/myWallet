@@ -1,21 +1,26 @@
 /**
- * MyWallet — Category Picker
+ * MyWallet — Preselected Category Button & Trigger
  * 
- * Interactive chip selector for major and sub-categories with color tokens and icons.
+ * Delivers Phase 4.3 Refinement:
+ * - Replaces horizontal scrolling chips with a clean, preselected category button
+ * - Displays active category icon, name, and subcategory breadcrumb
+ * - Tapping opens the hierarchical CategoryModal with grouped categories & custom category creation
  */
 
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { ChevronDown, Tag } from 'lucide-react-native';
+
 import { CategoryRepository } from '@/repositories';
-import { Category, CategoryType } from '@/db/schema';
+import { CategoryType } from '@/db/schema';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
-import { Colors, Typography, Shapes } from '@/theme';
+import { CategoryModal } from './CategoryModal';
+import { Colors, Typography, Spacing, Shapes, Elevation } from '@/theme';
 
 interface CategoryPickerProps {
   type: CategoryType;
@@ -32,157 +37,144 @@ export function CategoryPicker({
   onSelectCategory,
   onSelectSubcategory,
 }: CategoryPickerProps) {
-  // Fetch major categories matching current type
-  const majorCategories = useMemo(() => {
-    return CategoryRepository.getMajorCategories(type);
-  }, [type]);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  // Fetch subcategories for the selected major category
-  const subcategories = useMemo(() => {
-    if (!selectedCategoryId) return [];
-    return CategoryRepository.getSubcategories(selectedCategoryId);
+  // Fetch active major category details
+  const activeCategory = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    return CategoryRepository.getById(selectedCategoryId);
   }, [selectedCategoryId]);
+
+  // Fetch active subcategory details (if any)
+  const activeSubcategory = useMemo(() => {
+    if (!selectedSubcategoryId) return null;
+    return CategoryRepository.getById(selectedSubcategoryId);
+  }, [selectedSubcategoryId]);
+
+  const catColor = activeCategory?.color || Colors.primaryFixed;
 
   return (
     <View style={styles.container}>
-      {/* Major Categories Row */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipScroll}
+      {/* ─── Preselected Category Button ─── */}
+      <TouchableOpacity
+        style={[
+          styles.button,
+          { borderColor: `${catColor}60` },
+        ]}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.7}
       >
-        {majorCategories.map((cat: Category) => {
-          const isSelected = selectedCategoryId === cat.id;
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.chip,
-                isSelected && {
-                  backgroundColor: `${cat.color}25`,
-                  borderColor: cat.color,
-                },
-              ]}
-              onPress={() => {
-                onSelectCategory(cat.id);
-                onSelectSubcategory(null);
-              }}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.iconCircle,
-                  { backgroundColor: `${cat.color}30` },
-                ]}
-              >
-                <CategoryIcon name={cat.icon} size={15} color={cat.color} />
-              </View>
-              <Text
-                style={[
-                  styles.chipText,
-                  isSelected && { color: Colors.onSurface, fontWeight: '700' },
-                ]}
-              >
-                {cat.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* Subcategories Secondary Row (if any exist) */}
-      {subcategories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.subchipScroll}
+        {/* Left: Category Icon Circle */}
+        <View
+          style={[
+            styles.iconCircle,
+            { backgroundColor: `${catColor}25` },
+          ]}
         >
-          {subcategories.map((sub: Category) => {
-            const isSelected = selectedSubcategoryId === sub.id;
-            return (
-              <TouchableOpacity
-                key={sub.id}
-                style={[
-                  styles.subchip,
-                  isSelected && styles.subchipActive,
-                ]}
-                onPress={() => {
-                  onSelectSubcategory(isSelected ? null : sub.id);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.subchipText,
-                    isSelected && styles.subchipTextActive,
-                  ]}
-                >
-                  {sub.name}
+          <CategoryIcon
+            name={activeCategory?.icon || 'Tag'}
+            size={18}
+            color={catColor}
+          />
+        </View>
+
+        {/* Center: Category & Subcategory Labels */}
+        <View style={styles.textContainer}>
+          <View style={styles.titleRow}>
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {activeCategory?.name || 'Select Category'}
+            </Text>
+            {activeSubcategory && (
+              <View style={[styles.subBadge, { backgroundColor: `${catColor}20` }]}>
+                <Text style={[styles.subBadgeText, { color: catColor }]} numberOfLines={1}>
+                  › {activeSubcategory.name}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
+              </View>
+            )}
+          </View>
+          <Text style={styles.tapHint}>
+            {activeSubcategory
+              ? `${activeCategory?.name} • ${activeSubcategory.name}`
+              : 'Tap to view subcategories or choose different'}
+          </Text>
+        </View>
+
+        {/* Right: Dropdown Chevron */}
+        <View style={styles.chevronBox}>
+          <ChevronDown size={18} color={Colors.onSurfaceVariant} />
+        </View>
+      </TouchableOpacity>
+
+      {/* ─── Hierarchical Category Modal ─── */}
+      <CategoryModal
+        visible={modalVisible}
+        type={type}
+        selectedCategoryId={selectedCategoryId}
+        selectedSubcategoryId={selectedSubcategoryId}
+        onSelect={(catId, subId) => {
+          onSelectCategory(catId);
+          onSelectSubcategory(subId);
+        }}
+        onClose={() => setModalVisible(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8,
+    marginVertical: 2,
   },
-  chipScroll: {
-    gap: 8,
-    paddingHorizontal: 2,
-  },
-  chip: {
+  button: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.surfaceContainerLow,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: Shapes.xl,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: Colors.strokeMedium,
+    gap: 12,
+    ...Elevation.low,
   },
   iconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipText: {
-    ...Typography.bodySmMedium,
-    fontSize: 12,
-    color: Colors.onSurfaceVariant,
+  textContainer: {
+    flex: 1,
   },
-  subchipScroll: {
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
-    paddingHorizontal: 2,
-    paddingTop: 2,
   },
-  subchip: {
-    backgroundColor: Colors.surfaceContainerHigh,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  categoryName: {
+    ...Typography.bodyMdMedium,
+    fontSize: 14,
+    color: Colors.onSurface,
+    fontWeight: '700',
+  },
+  subBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: Shapes.pill,
-    borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
   },
-  subchipActive: {
-    backgroundColor: Colors.primaryContainer,
-    borderColor: Colors.primaryFixed,
+  subBadgeText: {
+    ...Typography.bodySmMedium,
+    fontSize: 11,
+    fontWeight: '600',
   },
-  subchipText: {
+  tapHint: {
     ...Typography.bodySm,
     fontSize: 11,
     color: Colors.onSurfaceVariant,
+    marginTop: 2,
   },
-  subchipTextActive: {
-    color: Colors.onPrimary,
-    fontWeight: '700',
+  chevronBox: {
+    padding: 4,
   },
 });
