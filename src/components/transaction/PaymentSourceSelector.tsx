@@ -1,20 +1,29 @@
 /**
- * MyWallet — Payment Source Selector
+ * MyWallet — Payment Source Selector (Dropdown Trigger)
  * 
- * Selects funding account (Bank/Cash) or Credit Card for transactions and transfers.
+ * Replaces horizontal scroll with an interactive source selector button
+ * matching the CategoryPicker design. Tapping opens PaymentSourceModal
+ * displaying Bank Accounts, Cash Wallets, and Credit Cards with real-time balances.
  */
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { Building, Wallet, CreditCard as CardIcon } from 'lucide-react-native';
+import {
+  ChevronDown,
+  Building,
+  Wallet,
+  CreditCard as CardIcon,
+  Star,
+} from 'lucide-react-native';
 import { Account, CreditCard } from '@/db/schema';
-import { Colors, Typography, Shapes } from '@/theme';
+import { CreditCardRepository } from '@/repositories';
+import { PaymentSourceModal } from './PaymentSourceModal';
+import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation } from '@/theme';
 
 interface PaymentSourceSelectorProps {
   accounts: Account[];
@@ -33,100 +42,139 @@ export function PaymentSourceSelector({
   onSelectSource,
   isTransfer = false,
 }: PaymentSourceSelectorProps) {
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // Active account or card
+  const activeAccount = useMemo(() => {
+    if (selectedSourceType !== 'account') return null;
+    return accounts.find((a) => a.id === selectedSourceId) || accounts[0] || null;
+  }, [accounts, selectedSourceType, selectedSourceId]);
+
+  const activeCard = useMemo(() => {
+    if (selectedSourceType !== 'credit_card') return null;
+    return creditCards.find((c) => c.id === selectedSourceId) || creditCards[0] || null;
+  }, [creditCards, selectedSourceType, selectedSourceId]);
+
+  // Derived metadata
+  const sourceMeta = useMemo(() => {
+    if (selectedSourceType === 'credit_card' && activeCard) {
+      const outstanding = CreditCardRepository.getCardOutstanding(activeCard.id);
+      const availableLine = Math.max(0, activeCard.credit_limit - outstanding);
+      const color = activeCard.color || Colors.secondaryFixed;
+      return {
+        name: activeCard.name,
+        badge: activeCard.last4 ? `•• ${activeCard.last4}` : 'Credit Card',
+        badgeColor: color,
+        subLabel: `Available Line: ₹${availableLine.toLocaleString('en-IN')}`,
+        color,
+        iconType: 'card' as const,
+        isPrimary: false,
+      };
+    }
+
+    if (activeAccount) {
+      const isCash = activeAccount.type === 'cash';
+      const isPrimary = activeAccount.is_primary === 1;
+      const color = isPrimary ? Colors.chartreuse : Colors.primaryFixed;
+      return {
+        name: activeAccount.name,
+        badge: isPrimary ? 'PRIMARY' : isCash ? 'CASH' : (activeAccount.institution || 'BANK'),
+        badgeColor: color,
+        subLabel: `Available Balance: ₹${activeAccount.balance.toLocaleString('en-IN')}`,
+        color,
+        iconType: (isCash ? 'cash' : 'bank') as 'cash' | 'bank',
+        isPrimary,
+      };
+    }
+
+    return {
+      name: 'Select Payment Source',
+      badge: '',
+      badgeColor: Colors.onSurfaceVariant,
+      subLabel: 'Tap to choose account or card',
+      color: Colors.primaryFixed,
+      iconType: 'bank' as const,
+      isPrimary: false,
+    };
+  }, [selectedSourceType, activeAccount, activeCard]);
+
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+      {/* ─── Source Selector Trigger Button ─── */}
+      <TouchableOpacity
+        style={[
+          styles.button,
+          { borderColor: `${sourceMeta.color}50` },
+        ]}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.7}
       >
-        {/* Bank & Cash Accounts */}
-        {accounts.map((acc) => {
-          const isSelected =
-            selectedSourceType === 'account' && selectedSourceId === acc.id;
-          const isCash = acc.type === 'cash';
+        {/* Left: Icon Circle */}
+        <View
+          style={[
+            styles.iconCircle,
+            { backgroundColor: `${sourceMeta.color}20` },
+          ]}
+        >
+          {sourceMeta.iconType === 'card' ? (
+            <CardIcon size={18} color={sourceMeta.color} />
+          ) : sourceMeta.iconType === 'cash' ? (
+            <Wallet size={18} color={sourceMeta.color} />
+          ) : (
+            <Building size={18} color={sourceMeta.color} />
+          )}
+        </View>
 
-          return (
-            <TouchableOpacity
-              key={acc.id}
-              style={[
-                styles.sourcePill,
-                isSelected && styles.sourcePillActive,
-              ]}
-              onPress={() => onSelectSource('account', acc.id)}
-              activeOpacity={0.7}
-            >
-              {isCash ? (
-                <Wallet
-                  size={14}
-                  color={isSelected ? Colors.onPrimary : Colors.primaryFixed}
-                />
-              ) : (
-                <Building
-                  size={14}
-                  color={isSelected ? Colors.onPrimary : Colors.onSurfaceVariant}
-                />
-              )}
-              <Text
+        {/* Center: Source Name & Balance */}
+        <View style={styles.textContainer}>
+          <View style={styles.titleRow}>
+            <Text style={styles.sourceName} numberOfLines={1}>
+              {sourceMeta.name}
+            </Text>
+            {sourceMeta.badge ? (
+              <View
                 style={[
-                  styles.sourceName,
-                  isSelected && styles.sourceNameActive,
+                  styles.badge,
+                  { backgroundColor: `${sourceMeta.badgeColor}20` },
                 ]}
               >
-                {acc.name}
-              </Text>
-              <Text
-                style={[
-                  styles.sourceBalance,
-                  isSelected && styles.sourceBalanceActive,
-                ]}
-              >
-                ₹{acc.balance.toLocaleString('en-IN')}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* Credit Cards (available for expenses only, not transfers) */}
-        {!isTransfer &&
-          creditCards.map((card) => {
-            const isSelected =
-              selectedSourceType === 'credit_card' && selectedSourceId === card.id;
-
-            return (
-              <TouchableOpacity
-                key={card.id}
-                style={[
-                  styles.sourcePill,
-                  isSelected && styles.sourcePillActive,
-                ]}
-                onPress={() => onSelectSource('credit_card', card.id)}
-                activeOpacity={0.7}
-              >
-                <CardIcon
-                  size={14}
-                  color={isSelected ? Colors.onPrimary : card.color || Colors.secondaryFixed}
-                />
+                {sourceMeta.isPrimary && (
+                  <Star size={9} color={sourceMeta.badgeColor} fill={sourceMeta.badgeColor} />
+                )}
                 <Text
                   style={[
-                    styles.sourceName,
-                    isSelected && styles.sourceNameActive,
+                    styles.badgeText,
+                    { color: sourceMeta.badgeColor },
                   ]}
+                  numberOfLines={1}
                 >
-                  {card.name}
+                  {sourceMeta.badge}
                 </Text>
-                <Text
-                  style={[
-                    styles.sourceBalance,
-                    isSelected && styles.sourceBalanceActive,
-                  ]}
-                >
-                  •• {card.last4 || 'Card'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-      </ScrollView>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.subLabel} numberOfLines={1}>
+            {sourceMeta.subLabel}
+          </Text>
+        </View>
+
+        {/* Right: Chevron */}
+        <View style={styles.chevronBox}>
+          <ChevronDown size={18} color={Colors.onSurfaceVariant} />
+        </View>
+      </TouchableOpacity>
+
+      {/* ─── Bottom-Sheet Modal ─── */}
+      <PaymentSourceModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        accounts={accounts}
+        creditCards={creditCards}
+        selectedSourceType={selectedSourceType}
+        selectedSourceId={selectedSourceId}
+        onSelectSource={onSelectSource}
+        isTransfer={isTransfer}
+      />
     </View>
   );
 }
@@ -135,42 +183,60 @@ const styles = StyleSheet.create({
   container: {
     marginVertical: 2,
   },
-  scrollContent: {
-    gap: 8,
-    paddingHorizontal: 2,
-  },
-  sourcePill: {
+  button: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.surfaceContainerLow,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: Shapes.xl,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: Colors.strokeMedium,
+    gap: 12,
+    ...Elevation.low,
   },
-  sourcePillActive: {
-    backgroundColor: Colors.primaryContainer,
-    borderColor: Colors.primaryFixed,
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textContainer: {
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   sourceName: {
-    ...Typography.bodySmMedium,
-    fontSize: 12,
+    ...Typography.bodyMdMedium,
+    fontSize: 14,
     color: Colors.onSurface,
-  },
-  sourceNameActive: {
-    color: Colors.onPrimary,
     fontWeight: '700',
   },
-  sourceBalance: {
-    fontFamily: Typography.numericSm.fontFamily,
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Shapes.pill,
+  },
+  badgeText: {
+    fontFamily: FontFamily.numericMedium,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  subLabel: {
+    ...Typography.bodySm,
     fontSize: 11,
     color: Colors.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
+    marginTop: 2,
   },
-  sourceBalanceActive: {
-    color: Colors.onPrimary,
-    opacity: 0.85,
+  chevronBox: {
+    padding: 4,
   },
 });

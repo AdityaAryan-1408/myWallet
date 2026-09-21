@@ -309,7 +309,30 @@ export default function CardsScreen() {
         </Animated.View>
 
         {/* ─── Cards List ─── */}
-        {cardsWithMetrics.map((item, idx) => {
+        {cardsWithMetrics.length === 0 ? (
+          <Animated.View
+            entering={FadeInDown.duration(600).delay(300)}
+            style={styles.emptyCardsCard}
+          >
+            <CreditCardIcon size={36} color={Colors.onSurfaceVariant} />
+            <Text style={styles.emptyCardsTitle}>No Credit Cards Configured</Text>
+            <Text style={styles.emptyCardsSub}>
+              Add your credit cards to monitor monthly cycle limits, dues, and payment schedules.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyCardsAddBtn}
+              onPress={() => {
+                setCardToEdit(null);
+                setAddEditVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Plus size={16} color="#000" />
+              <Text style={styles.emptyCardsAddBtnText}>Add First Card</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          cardsWithMetrics.map((item, idx) => {
           const { card, outstanding, utilizationPercentage, daysRemaining, statusColor } = item;
 
           return (
@@ -400,7 +423,8 @@ export default function CardsScreen() {
               </View>
             </Animated.View>
           );
-        })}
+        })
+      )}
 
         {/* ─── Financial Notice ─── */}
         <Animated.View
@@ -811,5 +835,44 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     flex: 1,
     lineHeight: 18,
+  },
+  emptyCardsCard: {
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: Shapes.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+    marginVertical: Spacing.sm,
+  },
+  emptyCardsTitle: {
+    ...Typography.bodyMdMedium,
+    color: Colors.onSurface,
+    fontWeight: '700',
+    marginTop: Spacing.sm,
+    fontSize: 15,
+  },
+  emptyCardsSub: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  emptyCardsAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.primaryFixed,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Shapes.pill,
+  },
+  emptyCardsAddBtnText: {
+    ...Typography.bodySmMedium,
+    color: '#000',
+    fontWeight: '700',
   },
 });

@@ -84,11 +84,11 @@ function TabItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
   }));
 
   const animatedLabelStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isFocused ? 1 : 0.4, { duration: 180 }),
-    color: isFocused ? Colors.primaryFixed : 'rgba(255, 255, 255, 0.4)',
+    opacity: withTiming(isFocused ? 1 : 0.7, { duration: 180 }),
+    color: isFocused ? Colors.primaryFixed : Colors.onSurfaceVariant,
   }));
 
-  const iconColor = isFocused ? Colors.primaryFixed : 'rgba(255, 255, 255, 0.4)';
+  const iconColor = isFocused ? Colors.primaryFixed : Colors.onSurfaceVariant;
 
   return (
     <TouchableOpacity
@@ -214,12 +214,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(10, 12, 16, 0.94)',
+    backgroundColor: Colors.surface,
     borderTopWidth: 0,
   },
   topBorder: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: Colors.strokeSubtle,
   },
   tabsRow: {
     flexDirection: 'row',

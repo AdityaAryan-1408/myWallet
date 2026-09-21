@@ -8,12 +8,6 @@ import { getDatabase } from '@/db/client';
 import { CreditCard } from '@/db/schema';
 import { TransactionWithDetails, CategorySpend } from './transactionRepository';
 
-// Map of initial seed outstandings for demo accuracy
-const INITIAL_OUTSTANDINGS: Record<string, number> = {
-  card_hdfc: 18450,
-  card_icici: 6230,
-};
-
 export const CreditCardRepository = {
   getAllActive(): CreditCard[] {
     const db = getDatabase();
@@ -47,9 +41,8 @@ export const CreditCardRepository = {
 
     const loggedExpenses = expenseRow?.total ?? 0;
     const loggedPayments = paymentRow?.total ?? 0;
-    const baseInitial = INITIAL_OUTSTANDINGS[cardId] ?? 0;
 
-    return Math.max(0, (baseInitial + loggedExpenses) - loggedPayments);
+    return Math.max(0, loggedExpenses - loggedPayments);
   },
 
   getTotalCreditObligations(): number {

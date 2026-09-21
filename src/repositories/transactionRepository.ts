@@ -64,8 +64,8 @@ export const TransactionRepository = {
       [yearMonth]
     );
 
-    const income = incomeRow?.total ?? 12500; // fallback to sample baseline if empty
-    const expense = expenseRow?.total ?? 8420; // fallback to sample baseline if empty
+    const income = incomeRow?.total ?? 0;
+    const expense = expenseRow?.total ?? 0;
     const saved = income - expense;
 
     return { income, expense, saved };

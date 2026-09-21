@@ -6,8 +6,10 @@
  * even upload to drive in case I need to change my phone."
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
   Wallet,
@@ -21,6 +23,8 @@ import {
   Info,
 } from 'lucide-react-native';
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
+import { useFinancialStore } from '@/stores';
+import { AnalyticsRepository } from '@/repositories';
 import { Colors, Typography, Spacing, Shapes, Elevation } from '@/theme';
 
 interface GridItem {
@@ -96,6 +100,43 @@ const GRID_ITEMS: GridItem[] = [
 ];
 
 export default function MoreScreen() {
+  const router = useRouter();
+  const { accounts, reservations, totalReservedMoney, categories, debtSummary } = useFinancialStore();
+
+  const activeAccountsCount = accounts.filter((a) => a.is_active === 1).length;
+  const activeReservationsCount = reservations.filter((r) => r.is_active === 1).length;
+  const activeCategoriesCount = categories.filter((c) => c.is_active === 1).length;
+
+  const resilienceScore = useMemo(() => {
+    try {
+      return AnalyticsRepository.getFinancialResilienceScore().score;
+    } catch {
+      return 85;
+    }
+  }, []);
+
+  const handleGridPress = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (id === 'accounts') {
+      router.push({ pathname: '/accounts' as any, params: { section: 'accounts' } });
+    } else if (id === 'reservations') {
+      router.push({ pathname: '/accounts' as any, params: { section: 'reservations' } });
+    } else if (id === 'categories') {
+      router.push('/categories' as any);
+    } else if (id === 'debts') {
+      router.push('/debts' as any);
+    } else if (id === 'analytics') {
+      router.push('/analytics' as any);
+    } else if (id === 'backup') {
+      router.push({ pathname: '/settings' as any, params: { section: 'backup' } });
+    } else if (id === 'security') {
+      router.push({ pathname: '/settings' as any, params: { section: 'security' } });
+    } else if (id === 'settings') {
+      router.push({ pathname: '/settings' as any, params: { section: 'preferences' } });
+    }
+  };
+
   return (
     <View style={styles.screen}>
       <ScreenHeader subtitle="MORE FEATURES" />
@@ -141,13 +182,30 @@ export default function MoreScreen() {
         <View style={styles.gridContainer}>
           {GRID_ITEMS.map((item, idx) => {
             const IconComponent = item.icon;
+            const badge =
+              item.id === 'accounts'
+                ? `${activeAccountsCount} Active`
+                : item.id === 'reservations'
+                  ? `₹${totalReservedMoney.toLocaleString('en-IN')}`
+                  : item.id === 'categories'
+                    ? `${activeCategoriesCount} Active`
+                    : item.id === 'debts'
+                      ? `${debtSummary?.pending_count ?? 0} Pending`
+                      : item.id === 'analytics'
+                        ? `${resilienceScore}/100 Score`
+                        : item.badge;
+
             return (
               <Animated.View
                 key={item.id}
                 entering={FadeInDown.duration(500).delay(250 + idx * 50)}
                 style={styles.gridCardWrapper}
               >
-                <TouchableOpacity style={styles.gridCard} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.gridCard}
+                  activeOpacity={0.7}
+                  onPress={() => handleGridPress(item.id)}
+                >
                   <View style={styles.cardTop}>
                     <View
                       style={[
@@ -157,9 +215,9 @@ export default function MoreScreen() {
                     >
                       <IconComponent size={20} color={item.accentColor} />
                     </View>
-                    {item.badge && (
+                    {badge && (
                       <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{item.badge}</Text>
+                        <Text style={styles.badgeText}>{badge}</Text>
                       </View>
                     )}
                   </View>

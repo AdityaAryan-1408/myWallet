@@ -59,15 +59,21 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  const { themeMode } = useFinancialStore();
+  const isLight = themeMode === 'light';
+
   if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: Colors.surface }]}>
       <SafeAreaProvider>
         <PaperProvider theme={PaperTheme}>
-          <StatusBar barStyle="light-content" backgroundColor={Colors.surface} />
+          <StatusBar
+            barStyle={isLight ? 'dark-content' : 'light-content'}
+            backgroundColor={Colors.surface}
+          />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -84,6 +90,54 @@ export default function RootLayout() {
               options={{
                 presentation: 'modal',
                 animation: 'slide_from_bottom',
+              }}
+            />
+
+            {/* Available to Spend Breakdown (Phase 8) */}
+            <Stack.Screen
+              name="breakdown"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* Accounts & Reserved Money (Phase 9) */}
+            <Stack.Screen
+              name="accounts"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* Categories & Intelligence (Phase 10) */}
+            <Stack.Screen
+              name="categories"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* People & Debts (Phase 11) */}
+            <Stack.Screen
+              name="debts"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* Analytics & Resilience (Phase 12) */}
+            <Stack.Screen
+              name="analytics"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* Settings, Profile, Security & Backup (Phase 13) */}
+            <Stack.Screen
+              name="settings"
+              options={{
+                animation: 'slide_from_right',
               }}
             />
 

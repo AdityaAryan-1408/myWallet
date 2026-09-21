@@ -4,7 +4,7 @@
  * Import everything from '@/theme' for one-stop design token access.
  */
 
-export { Colors } from './colors';
+export { Colors, DarkColors, LightColors, getInitialTheme } from './colors';
 export type { ColorToken } from './colors';
 
 export { Typography, FontFamily } from './typography';

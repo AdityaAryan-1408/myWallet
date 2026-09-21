@@ -94,6 +94,15 @@ export interface PeopleDebt {
   created_at: string;
 }
 
+export interface DebtRepayment {
+  id: string;
+  debt_id: string;
+  amount: number;
+  date: string;
+  note?: string | null;
+  created_at: string;
+}
+
 export interface DashboardNote {
   id: string; // 'active_note'
   content: string;
@@ -212,6 +221,17 @@ CREATE TABLE IF NOT EXISTS people_debts (
 );
 `;
 
+export const CREATE_DEBT_REPAYMENTS_TABLE = `
+CREATE TABLE IF NOT EXISTS debt_repayments (
+  id TEXT PRIMARY KEY,
+  debt_id TEXT NOT NULL REFERENCES people_debts(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+`;
+
 export const CREATE_DASHBOARD_NOTES_TABLE = `
 CREATE TABLE IF NOT EXISTS dashboard_notes (
   id TEXT PRIMARY KEY,
@@ -250,4 +270,5 @@ CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id
 CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_people_debts_settled ON people_debts(is_settled);
 CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id);
+CREATE INDEX IF NOT EXISTS idx_debt_repayments_debt ON debt_repayments(debt_id);
 `;

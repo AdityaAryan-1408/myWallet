@@ -24,13 +24,13 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { X, Calendar, Check, ArrowRightLeft } from 'lucide-react-native';
+import { X, Calendar, Check, ArrowRightLeft, Sparkles } from 'lucide-react-native';
 
 import { QuickCalcKeypad } from '@/components/transaction/QuickCalcKeypad';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { PaymentSourceSelector } from '@/components/transaction/PaymentSourceSelector';
 import { evaluateExpression } from '@/utils/mathEvaluator';
-import { TransactionRepository } from '@/repositories';
+import { TransactionRepository, MerchantRepository } from '@/repositories';
 import { useFinancialStore } from '@/stores';
 import { TransactionType, CategoryType } from '@/db/schema';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
@@ -53,9 +53,48 @@ export default function AddTransactionScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('cat_food');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<'account' | 'credit_card'>('account');
-  const [sourceId, setSourceId] = useState<string>(accounts[0]?.id || 'acc_sbi');
-  const [destAccountId, setDestAccountId] = useState<string>(accounts[1]?.id || 'acc_cash');
+
+  // Compute primary bank account
+  const primaryAccount = useMemo(() => {
+    return accounts.find((a) => a.is_primary === 1 && a.is_active === 1) || accounts[0];
+  }, [accounts]);
+
+  const [sourceId, setSourceId] = useState<string>(() => {
+    const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
+    return primary?.id || accounts[0]?.id || 'acc_sbi';
+  });
+  const [destAccountId, setDestAccountId] = useState<string>(() => {
+    const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
+    const secondary = accounts.find((a) => a.id !== (primary?.id || accounts[0]?.id));
+    return secondary?.id || accounts[1]?.id || 'acc_cash';
+  });
   const [note, setNote] = useState<string>('');
+
+  // Auto-sync default source to primary bank account if initialized before accounts loaded
+  React.useEffect(() => {
+    if (primaryAccount && (!sourceId || sourceId === 'acc_sbi')) {
+      setSourceId(primaryAccount.id);
+    }
+  }, [primaryAccount]);
+
+  // Merchant suggestion presets & live reward tip
+  const quickMerchants = useMemo(() => MerchantRepository.getQuickMerchantChips(), []);
+  const rewardTip = useMemo(() => {
+    if (!note.trim()) return null;
+    return MerchantRepository.getRewardTipForMerchant(note, creditCards);
+  }, [note, creditCards]);
+
+  const handleSelectMerchant = (m: { name: string; brand: string }) => {
+    Haptics.selectionAsync();
+    setNote(m.name);
+    const suggested = MerchantRepository.getSuggestedCategory(m.brand);
+    if (suggested && type === 'expense') {
+      setSelectedCategoryId(suggested.categoryId);
+      if (suggested.subcategoryId) {
+        setSelectedSubcategoryId(suggested.subcategoryId);
+      }
+    }
+  };
 
   // Date selection state (supports custom/past dates & prefill from calendar)
   const [transactionDate, setTransactionDate] = useState<string>(
@@ -320,7 +359,7 @@ export default function AddTransactionScreen() {
           </View>
         )}
 
-        {/* ─── Note Input ─── */}
+        {/* ─── Note Input & Merchant Intelligence ─── */}
         <View style={styles.section}>
           <TextInput
             style={styles.noteInput}
@@ -329,6 +368,39 @@ export default function AddTransactionScreen() {
             value={note}
             onChangeText={setNote}
           />
+
+          {/* Quick Merchant Suggestion Chips */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.merchantChipsRow}
+          >
+            {quickMerchants.map((m) => {
+              const isSelected = note.toLowerCase().includes(m.name.toLowerCase());
+              return (
+                <TouchableOpacity
+                  key={m.name}
+                  style={[styles.merchantChip, isSelected && styles.merchantChipActive]}
+                  onPress={() => handleSelectMerchant(m)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.merchantChipText, isSelected && styles.merchantChipTextActive]}>
+                    {m.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Credit Card Reward Tip Banner */}
+          {rewardTip && (
+            <View style={styles.rewardTipBanner}>
+              <Sparkles size={13} color={Colors.chartreuse} />
+              <Text style={styles.rewardTipText} numberOfLines={2}>
+                {rewardTip.tip}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ─── Integrated Quick Calc Keypad ─── */}
@@ -696,5 +768,52 @@ const styles = StyleSheet.create({
     color: Colors.surface,
     fontSize: 12,
     fontWeight: '700',
+  },
+  merchantChipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  merchantChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  merchantChipActive: {
+    backgroundColor: 'rgba(200, 243, 34, 0.15)',
+    borderColor: Colors.chartreuse,
+  },
+  merchantChipText: {
+    ...Typography.labelCaps,
+    color: Colors.onSurfaceVariant,
+    fontSize: 10,
+  },
+  merchantChipTextActive: {
+    color: Colors.chartreuse,
+    fontWeight: '700',
+  },
+  rewardTipBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(200, 243, 34, 0.08)',
+    borderRadius: Shapes.md,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(200, 243, 34, 0.20)',
+    marginTop: 6,
+  },
+  rewardTipText: {
+    ...Typography.bodySm,
+    color: Colors.chartreuse,
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 15,
   },
 });

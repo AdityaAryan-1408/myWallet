@@ -79,4 +79,46 @@ export const AccountRepository = {
       id,
     ]);
   },
+
+  update(
+    id: string,
+    fields: Partial<Pick<Account, 'name' | 'type' | 'balance' | 'institution' | 'is_primary' | 'notes' | 'display_order'>>,
+  ): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const sets: string[] = [];
+    const values: any[] = [];
+
+    if (fields.name !== undefined) { sets.push('name = ?'); values.push(fields.name); }
+    if (fields.type !== undefined) { sets.push('type = ?'); values.push(fields.type); }
+    if (fields.balance !== undefined) { sets.push('balance = ?'); values.push(fields.balance); }
+    if (fields.institution !== undefined) { sets.push('institution = ?'); values.push(fields.institution); }
+    if (fields.is_primary !== undefined) { sets.push('is_primary = ?'); values.push(fields.is_primary); }
+    if (fields.notes !== undefined) { sets.push('notes = ?'); values.push(fields.notes); }
+    if (fields.display_order !== undefined) { sets.push('display_order = ?'); values.push(fields.display_order); }
+
+    if (sets.length === 0) return;
+    sets.push('updated_at = ?');
+    values.push(now, id);
+    db.runSync(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?;`, values);
+  },
+
+  delete(id: string): void {
+    const db = getDatabase();
+    db.runSync('DELETE FROM accounts WHERE id = ?;', [id]);
+  },
+
+  setPrimary(id: string): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    // Clear all primaries, then set the requested one
+    db.runSync('UPDATE accounts SET is_primary = 0, updated_at = ? WHERE is_primary = 1;', [now]);
+    db.runSync('UPDATE accounts SET is_primary = 1, updated_at = ? WHERE id = ?;', [now, id]);
+  },
+
+  getCount(): number {
+    const db = getDatabase();
+    const row = db.getFirstSync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM accounts WHERE is_active = 1;');
+    return row?.cnt ?? 0;
+  },
 };

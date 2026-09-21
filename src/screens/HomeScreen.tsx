@@ -21,6 +21,8 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import Animated, {
   FadeInDown,
 } from 'react-native-reanimated';
@@ -45,13 +47,14 @@ import {
 } from '@/components/dashboard';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 import { useFinancialStore } from '@/stores';
-import { TransactionRepository } from '@/repositories';
+import { CreditCardRepository } from '@/repositories';
 
 export interface HomeScreenProps {
   onNavigateTab?: (index: number) => void;
 }
 
 export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
+  const router = useRouter();
   const {
     userName,
     availableToSpend,
@@ -78,40 +81,8 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     setTimeout(() => setRefreshing(false), 400);
   };
 
-  // Test action for user: Simulate an expense to see the number roll down live!
-  const handleSimulateQuickExpense = () => {
-    const randomAmounts = [120, 250, 450, 80, 320];
-    const amount = randomAmounts[Math.floor(Math.random() * randomAmounts.length)];
-    const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const time = now.toTimeString().split(' ')[0];
-
-    TransactionRepository.create({
-      id: `tx_${Date.now()}`,
-      type: 'expense',
-      amount,
-      account_id: 'acc_sbi',
-      category_id: 'cat_food',
-      date,
-      time,
-      note: 'Quick Test Coffee / Snack',
-    });
-
-    refreshFinancials();
-  };
-
-  // Category donut data: fall back to default demo items if none logged yet
-  const donutData =
-    categorySpends.length > 0
-      ? categorySpends
-      : [
-          { categoryId: 'cat_food', categoryName: 'Food & Dining', categoryColor: Colors.categoryFood, total: 3368, percentage: 40 },
-          { categoryId: 'cat_shopping', categoryName: 'Shopping', categoryColor: Colors.categoryShopping, total: 1852, percentage: 22 },
-          { categoryId: 'cat_transport', categoryName: 'Transport', categoryColor: Colors.categoryTransport, total: 1263, percentage: 15 },
-          { categoryId: 'cat_entertainment', categoryName: 'Entertainment', categoryColor: Colors.categoryEntertainment, total: 842, percentage: 10 },
-          { categoryId: 'cat_bills', categoryName: 'Bills', categoryColor: Colors.categoryBills, total: 674, percentage: 8 },
-          { categoryId: 'cat_other_exp', categoryName: 'Other', categoryColor: Colors.categoryOther, total: 421, percentage: 5 },
-        ];
+  // Category donut data: uses real logged category spends
+  const donutData = categorySpends;
 
   return (
     <View style={styles.screen}>
@@ -168,21 +139,19 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 </Text>
               </View>
 
-              {/* Info toggle for formula breakdown */}
+              {/* Navigate to full breakdown screen */}
               <TouchableOpacity
                 style={styles.breakdownToggle}
-                onPress={() => setShowBreakdown(!showBreakdown)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/breakdown' as any);
+                }}
                 activeOpacity={0.7}
               >
                 <Info size={14} color={Colors.onSurfaceVariant} />
                 <Text style={styles.breakdownToggleText}>
-                  {showBreakdown ? 'Hide Math' : 'How is this calculated?'}
+                  How is this calculated? →
                 </Text>
-                {showBreakdown ? (
-                  <ChevronUp size={12} color={Colors.onSurfaceVariant} />
-                ) : (
-                  <ChevronDown size={12} color={Colors.onSurfaceVariant} />
-                )}
               </TouchableOpacity>
             </View>
 
@@ -242,18 +211,6 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 </View>
               </Animated.View>
             )}
-
-            {/* Quick Interactive Demo Button */}
-            <View style={styles.heroActionRow}>
-              <TouchableOpacity
-                style={styles.testRollButton}
-                onPress={handleSimulateQuickExpense}
-                activeOpacity={0.8}
-              >
-                <Sparkles size={13} color={Colors.onPrimary} />
-                <Text style={styles.testRollText}>Test Dynamic Number Roll</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </Animated.View>
 
@@ -275,7 +232,9 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
               suffix=""
               textStyle={styles.tileAmount}
             />
-            <Text style={[styles.tileChange, { color: Colors.income }]}>+8% vs Aug</Text>
+            <Text style={[styles.tileChange, { color: Colors.income }]}>
+              {monthlyTotals.income > 0 ? 'This month' : 'No inflow'}
+            </Text>
           </View>
 
           <View style={styles.summaryTile}>
@@ -291,7 +250,9 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
               suffix=""
               textStyle={{ ...styles.tileAmount, color: Colors.expense }}
             />
-            <Text style={[styles.tileChange, { color: Colors.expense }]}>14 logs</Text>
+            <Text style={[styles.tileChange, { color: Colors.expense }]}>
+              {monthlyTotals.expense > 0 ? `${categorySpends.length} categories` : '0 logs'}
+            </Text>
           </View>
 
           <View style={styles.summaryTile}>
@@ -307,7 +268,9 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
               suffix=""
               textStyle={{ ...styles.tileAmount, color: Colors.secondaryFixed }}
             />
-            <Text style={[styles.tileChange, { color: Colors.secondaryFixed }]}>+32.6% net</Text>
+            <Text style={[styles.tileChange, { color: Colors.secondaryFixed }]}>
+              {monthlyTotals.saved > 0 ? 'Net savings' : 'Net zero'}
+            </Text>
           </View>
         </Animated.View>
 
@@ -330,19 +293,27 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           />
 
           {/* Category Chips Grid */}
-          <View style={styles.categoryPills}>
-            {donutData.slice(0, 6).map((cat) => (
-              <View key={cat.categoryId} style={styles.categoryPill}>
-                <View style={[styles.categoryDot, { backgroundColor: cat.categoryColor }]} />
-                <Text style={styles.categoryPillText} numberOfLines={1}>
-                  {cat.categoryName.split(' ')[0]} {cat.percentage}%
-                </Text>
-                <Text style={styles.categoryPillAmount}>
-                  ₹{cat.total.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            ))}
-          </View>
+          {donutData.length === 0 ? (
+            <View style={styles.emptyDonutBox}>
+              <Text style={styles.emptyDonutText}>
+                No category expenses logged this month
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.categoryPills}>
+              {donutData.slice(0, 6).map((cat) => (
+                <View key={cat.categoryId} style={styles.categoryPill}>
+                  <View style={[styles.categoryDot, { backgroundColor: cat.categoryColor }]} />
+                  <Text style={styles.categoryPillText} numberOfLines={1}>
+                    {cat.categoryName.split(' ')[0]} {cat.percentage}%
+                  </Text>
+                  <Text style={styles.categoryPillAmount}>
+                    ₹{cat.total.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </Animated.View>
 
         {/* ─── Dashboard Note Block (Scratchpad - Phase 3.8) ─── */}
@@ -370,7 +341,8 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
             </View>
 
             {creditCards.map((card) => {
-              const util = Math.round((24680 / card.credit_limit) * 100);
+              const outstanding = CreditCardRepository.getCardOutstanding(card.id);
+              const util = card.credit_limit > 0 ? Math.round((outstanding / card.credit_limit) * 100) : 0;
               return (
                 <View key={card.id} style={styles.creditCardRow}>
                   <View style={styles.cardLogoBox}>
@@ -384,7 +356,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                   </View>
                   <View style={styles.creditCardRight}>
                     <Text style={styles.creditCardAmount}>
-                      ₹{(card.id === 'card_hdfc' ? 18450 : 6230).toLocaleString('en-IN')}
+                      ₹{outstanding.toLocaleString('en-IN')}
                     </Text>
                     <Text
                       style={[
@@ -392,7 +364,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                         { color: util > 30 ? Colors.warning : Colors.income },
                       ]}
                     >
-                      {card.id === 'card_hdfc' ? '12.3%' : '6.2%'} utilized
+                      {util}% utilized
                     </Text>
                   </View>
                 </View>
@@ -416,7 +388,12 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
             </TouchableOpacity>
           </View>
 
-          {recentTransactions.map((tx) => {
+          {recentTransactions.length === 0 ? (
+            <View style={styles.emptyRecentBox}>
+              <Text style={styles.emptyRecentText}>No transactions recorded yet</Text>
+            </View>
+          ) : (
+            recentTransactions.map((tx) => {
             const isIncome = tx.type === 'income';
             return (
               <View key={tx.id} style={styles.txRow}>
@@ -459,7 +436,8 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 </View>
               </View>
             );
-          })}
+          })
+        )}
         </Animated.View>
 
         {/* Bottom padding for tab bar + FAB */}
@@ -629,25 +607,6 @@ const styles = StyleSheet.create({
     color: Colors.chartreuse,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
-  },
-  heroActionRow: {
-    marginTop: Spacing.xs,
-    flexDirection: 'row',
-  },
-  testRollButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.primaryContainer,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Shapes.pill,
-  },
-  testRollText: {
-    ...Typography.bodySmMedium,
-    color: Colors.onPrimary,
-    fontWeight: '700',
-    fontSize: 11,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -841,5 +800,25 @@ const styles = StyleSheet.create({
     ...Typography.labelCaps,
     fontSize: 9,
     color: Colors.onSurfaceVariant,
+  },
+  emptyRecentBox: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyRecentText: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontStyle: 'italic',
+  },
+  emptyDonutBox: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyDonutText: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontStyle: 'italic',
   },
 });

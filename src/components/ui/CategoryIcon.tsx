@@ -78,3 +78,5 @@ export function CategoryIcon({ name, size = 18, color = '#FFFFFF' }: CategoryIco
   const IconComponent = ICON_MAP[name] || HelpCircle;
   return <IconComponent size={size} color={color} />;
 }
+
+export const AVAILABLE_CATEGORY_ICONS = Object.keys(ICON_MAP);

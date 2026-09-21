@@ -11,6 +11,7 @@
 import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Wallet, Calendar, ChevronDown } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Shapes } from '@/theme';
 import { useFinancialStore } from '@/stores';
@@ -30,9 +31,18 @@ export function ScreenHeader({
   onMonthPress,
   onAvatarPress,
 }: ScreenHeaderProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userName } = useFinancialStore();
+  const { userName, avatarBadge } = useFinancialStore();
   const avatarInitial = userName ? userName.trim()[0]?.toUpperCase() || 'A' : 'A';
+
+  const handleAvatarPress = () => {
+    if (onAvatarPress) {
+      onAvatarPress();
+    } else {
+      router.push('/settings?section=profile' as any);
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
@@ -64,10 +74,14 @@ export function ScreenHeader({
           <TouchableOpacity
             style={styles.avatarContainer}
             activeOpacity={0.7}
-            onPress={onAvatarPress}
+            onPress={handleAvatarPress}
           >
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{avatarInitial}</Text>
+              {avatarBadge ? (
+                <Text style={{ fontSize: 16 }}>{avatarBadge}</Text>
+              ) : (
+                <Text style={styles.avatarText}>{avatarInitial}</Text>
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -78,11 +92,11 @@ export function ScreenHeader({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(16, 19, 25, 0.94)',
+    backgroundColor: Colors.surface,
     paddingBottom: 12,
     paddingHorizontal: Spacing.screenPadding,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: Colors.strokeSubtle,
   },
   row: {
     flexDirection: 'row',

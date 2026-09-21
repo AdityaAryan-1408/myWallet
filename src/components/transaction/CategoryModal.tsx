@@ -34,6 +34,7 @@ import {
 
 import { CategoryRepository } from '@/repositories';
 import { Category, CategoryType } from '@/db/schema';
+import { useFinancialStore } from '@/stores';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
@@ -170,6 +171,7 @@ export function CategoryModal({
     try {
       CategoryRepository.create(newCat);
       loadCategories();
+      useFinancialStore.getState().refreshFinancials();
 
       if (customParentId) {
         onSelect(customParentId, newId);
