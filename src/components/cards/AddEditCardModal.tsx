@@ -59,6 +59,7 @@ export function AddEditCardModal({
   const [issuer, setIssuer] = useState('');
   const [limitStr, setLimitStr] = useState('');
   const [resetDayStr, setResetDayStr] = useState('20');
+  const [dueDayStr, setDueDayStr] = useState('');
   const [last4, setLast4] = useState('');
   const [color, setColor] = useState(CARD_COLORS[0]);
 
@@ -69,6 +70,7 @@ export function AddEditCardModal({
         setIssuer(cardToEdit.issuer);
         setLimitStr(`${cardToEdit.credit_limit}`);
         setResetDayStr(`${cardToEdit.cycle_reset_day}`);
+        setDueDayStr(cardToEdit.payment_due_day ? `${cardToEdit.payment_due_day}` : '');
         setLast4(cardToEdit.last4 || '');
         setColor(cardToEdit.color || CARD_COLORS[0]);
       } else {
@@ -76,6 +78,7 @@ export function AddEditCardModal({
         setIssuer('');
         setLimitStr('100000');
         setResetDayStr('20');
+        setDueDayStr('');
         setLast4('');
         setColor(CARD_COLORS[0]);
       }
@@ -96,8 +99,18 @@ export function AddEditCardModal({
 
     const resetDay = parseInt(resetDayStr, 10);
     if (isNaN(resetDay) || resetDay < 1 || resetDay > 31) {
-      Alert.alert('Invalid Reset Day', 'Cycle reset day must be between 1 and 31.');
+      Alert.alert('Invalid Statement Day', 'Cycle reset day must be between 1 and 31.');
       return;
+    }
+
+    let dueDay: number | null = null;
+    if (dueDayStr.trim()) {
+      const parsedDue = parseInt(dueDayStr, 10);
+      if (isNaN(parsedDue) || parsedDue < 1 || parsedDue > 31) {
+        Alert.alert('Invalid Due Day', 'Payment due day must be between 1 and 31.');
+        return;
+      }
+      dueDay = parsedDue;
     }
 
     if (Platform.OS !== 'web') {
@@ -113,6 +126,7 @@ export function AddEditCardModal({
         issuer: issuer.trim() || 'Bank',
         credit_limit: limit,
         cycle_reset_day: resetDay,
+        payment_due_day: dueDay,
         last4: last4.trim() || null,
         color,
       });
@@ -123,6 +137,7 @@ export function AddEditCardModal({
         issuer: issuer.trim() || 'Bank',
         credit_limit: limit,
         cycle_reset_day: resetDay,
+        payment_due_day: dueDay,
         is_active: 1,
         notes: null,
         last4: last4.trim() || null,
@@ -217,7 +232,9 @@ export function AddEditCardModal({
               <Text style={styles.previewName}>{name || 'Card Name'}</Text>
               <View style={styles.previewBottom}>
                 <Text style={styles.previewNumber}>•••• •••• •••• {last4 || '4092'}</Text>
-                <Text style={styles.previewCycle}>Cycle: {resetDayStr}th</Text>
+                <Text style={styles.previewCycle}>
+                  Cycle: {resetDayStr || '20'}th{dueDayStr ? ` • Due: ${dueDayStr}th` : ''}
+                </Text>
               </View>
             </View>
 
@@ -245,9 +262,9 @@ export function AddEditCardModal({
               />
             </View>
 
-            {/* Dual Row: Credit Limit & Reset Day */}
+            {/* Dual Row: Credit Limit & Last 4 Digits */}
             <View style={styles.dualRow}>
-              <View style={[styles.fieldBox, { flex: 1.2 }]}>
+              <View style={[styles.fieldBox, { flex: 1.3 }]}>
                 <Text style={styles.fieldLabel}>CREDIT LIMIT (₹)</Text>
                 <TextInput
                   style={styles.input}
@@ -259,8 +276,24 @@ export function AddEditCardModal({
                 />
               </View>
 
-              <View style={[styles.fieldBox, { flex: 0.8 }]}>
-                <Text style={styles.fieldLabel}>RESET DAY (1-31)</Text>
+              <View style={[styles.fieldBox, { flex: 0.9 }]}>
+                <Text style={styles.fieldLabel}>LAST 4 DIGITS</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="4092"
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={last4}
+                  onChangeText={(t) => setLast4(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  maxLength={4}
+                />
+              </View>
+            </View>
+
+            {/* Dual Row: Statement Day & Payment Due Day */}
+            <View style={styles.dualRow}>
+              <View style={[styles.fieldBox, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>STATEMENT DAY (1-31)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="20"
@@ -271,21 +304,25 @@ export function AddEditCardModal({
                   maxLength={2}
                 />
               </View>
-            </View>
 
-            {/* Field: Last 4 digits */}
-            <View style={styles.fieldBox}>
-              <Text style={styles.fieldLabel}>LAST 4 DIGITS</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="4092"
-                placeholderTextColor={Colors.onSurfaceVariant}
-                value={last4}
-                onChangeText={(t) => setLast4(t.replace(/[^0-9]/g, ''))}
-                keyboardType="numeric"
-                maxLength={4}
-              />
+              <View style={[styles.fieldBox, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>PAYMENT DUE DAY</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 10 (Optional)"
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={dueDayStr}
+                  onChangeText={(t) => setDueDayStr(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+              </View>
             </View>
+            <Text style={styles.fieldHelper}>
+              {resetDayStr && dueDayStr
+                ? `Statement generates on the ${resetDayStr}th • Bill due on the ${dueDayStr}th`
+                : 'Payment due date is typically 15–20 days after statement generation.'}
+            </Text>
 
             {/* Color Swatch Picker */}
             <View style={styles.fieldBox}>
@@ -456,6 +493,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.strokeSubtle,
     fontSize: 13,
+  },
+  fieldHelper: {
+    ...Typography.bodySm,
+    fontSize: 10,
+    color: Colors.onSurfaceVariant,
+    marginTop: -2,
   },
   swatchRow: {
     flexDirection: 'row',

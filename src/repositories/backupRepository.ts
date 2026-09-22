@@ -165,9 +165,9 @@ export const BackupRepository = {
       if (tables.creditCards?.length) {
         for (const cc of tables.creditCards) {
           db.runSync(
-            `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, is_active, notes, last4, color, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-            [cc.id, cc.name, cc.issuer, cc.credit_limit, cc.cycle_reset_day, cc.is_active, cc.notes ?? null, cc.last4 ?? null, cc.color, cc.created_at]
+            `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, payment_due_day, is_active, notes, last4, color, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [cc.id, cc.name, cc.issuer, cc.credit_limit, cc.cycle_reset_day, (cc as any).payment_due_day ?? null, cc.is_active, cc.notes ?? null, cc.last4 ?? null, cc.color, cc.created_at]
           );
         }
       }
@@ -283,9 +283,9 @@ export const BackupRepository = {
       // Re-seed Credit Cards
       for (const card of SEED_DATA.creditCards) {
         db.runSync(
-          `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, is_active, last4, color, created_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?);`,
-          [card.id, card.name, card.issuer, card.credit_limit, card.cycle_reset_day, card.last4, card.color, now]
+          `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, payment_due_day, is_active, last4, color, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?);`,
+          [card.id, card.name, card.issuer, card.credit_limit, card.cycle_reset_day, (card as any).payment_due_day ?? null, card.last4, card.color, now]
         );
       }
 

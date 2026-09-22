@@ -32,6 +32,7 @@ import {
 
 import { CreditCard } from '@/db/schema';
 import { CreditCardRepository } from '@/repositories';
+import { calculateCardCycle, calculateCreditCardLifecycle } from '@/domain/financialCalculations';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
@@ -59,6 +60,30 @@ export function PayCardBillModal({
     if (!card) return 0;
     return CreditCardRepository.getCardOutstanding(card.id);
   }, [card]);
+
+  const cycleInfo = useMemo(() => {
+    if (!card) return null;
+    return calculateCardCycle(outstanding, card.credit_limit, card.cycle_reset_day);
+  }, [card, outstanding]);
+
+  const isPaid = useMemo(() => {
+    if (!card || !cycleInfo) return false;
+    return CreditCardRepository.isLastStatementPaid(
+      card.id,
+      cycleInfo.cycleStartDate.toISOString().split('T')[0]
+    );
+  }, [card, cycleInfo]);
+
+  const lifecycle = useMemo(() => {
+    if (!card) return null;
+    return calculateCreditCardLifecycle(
+      outstanding,
+      card.credit_limit,
+      card.cycle_reset_day,
+      card.payment_due_day,
+      isPaid
+    );
+  }, [card, outstanding, isPaid]);
 
   const minDue = useMemo(() => {
     return Math.max(500, Math.round(outstanding * 0.05));
@@ -169,9 +194,26 @@ export function PayCardBillModal({
                 <CreditCardIcon size={20} color="#FFFFFF" />
               </View>
               <View style={styles.cardHeroInfo}>
-                <Text style={styles.cardHeroName}>{card.name}</Text>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.cardHeroName}>{card.name}</Text>
+                  {lifecycle?.statusBadgeText && card.payment_due_day && (
+                    <View
+                      style={[
+                        styles.dueBadge,
+                        {
+                          backgroundColor: `${lifecycle.statusColor}22`,
+                          borderColor: `${lifecycle.statusColor}66`,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.dueBadgeText, { color: lifecycle.statusColor }]}>
+                        {lifecycle.statusBadgeText}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.cardHeroSub}>
-                  •••• {card.last4 || '4092'} • Total Outstanding: ₹{outstanding.toLocaleString('en-IN')}
+                  •••• {card.last4 || '4092'}{card.payment_due_day ? ` • Due on ${card.payment_due_day}th` : ''} • Outstanding: ₹{outstanding.toLocaleString('en-IN')}
                 </Text>
               </View>
             </View>
@@ -372,11 +414,30 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
   cardHeroName: {
     ...Typography.bodyMdMedium,
     color: Colors.onSurface,
     fontWeight: '700',
     fontSize: 14,
+  },
+  dueBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Shapes.sm,
+    borderWidth: 1,
+  },
+  dueBadgeText: {
+    ...Typography.labelCaps,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    fontWeight: '700',
   },
   cardHeroSub: {
     ...Typography.bodySm,

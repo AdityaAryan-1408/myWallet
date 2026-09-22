@@ -39,7 +39,11 @@ import {
 } from '@/components/cards';
 import { CreditCard } from '@/db/schema';
 import { CreditCardRepository } from '@/repositories';
-import { calculateCardCycle } from '@/domain/financialCalculations';
+import {
+  calculateCardCycle,
+  calculateCreditCardLifecycle,
+  CreditCardLifecycleStatus,
+} from '@/domain/financialCalculations';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
@@ -51,6 +55,11 @@ interface CardWithMetrics {
   daysRemaining: number;
   cycleStartDate: Date;
   cycleEndDate: Date;
+  paymentDueDate: Date | null;
+  daysUntilDue: number | null;
+  lifecycleStatus: CreditCardLifecycleStatus;
+  statusBadgeText: string;
+  lifecycleStatusColor: string;
   statusColor: string;
   statusLabel: string;
 }
@@ -80,6 +89,19 @@ export default function CardsScreen() {
       const availableCredit = Math.max(0, card.credit_limit - outstanding);
       const cycle = calculateCardCycle(outstanding, card.credit_limit, card.cycle_reset_day);
 
+      const isPaid = CreditCardRepository.isLastStatementPaid(
+        card.id,
+        cycle.cycleStartDate.toISOString().split('T')[0]
+      );
+
+      const lifecycle = calculateCreditCardLifecycle(
+        outstanding,
+        card.credit_limit,
+        card.cycle_reset_day,
+        card.payment_due_day,
+        isPaid
+      );
+
       const isOptimal = cycle.utilizationPercentage <= 30;
       const isWarning = cycle.utilizationPercentage > 30 && cycle.utilizationPercentage <= 50;
 
@@ -103,6 +125,11 @@ export default function CardsScreen() {
         daysRemaining: cycle.daysRemaining,
         cycleStartDate: cycle.cycleStartDate,
         cycleEndDate: cycle.cycleEndDate,
+        paymentDueDate: lifecycle.paymentDueDate,
+        daysUntilDue: lifecycle.daysUntilDue,
+        lifecycleStatus: lifecycle.lifecycleStatus,
+        statusBadgeText: lifecycle.statusBadgeText,
+        lifecycleStatusColor: lifecycle.statusColor,
         statusColor,
         statusLabel,
       };
@@ -141,13 +168,34 @@ export default function CardsScreen() {
     };
   }, [cardsWithMetrics]);
 
-  // Upcoming cycle due card (closest reset day with outstanding > 0)
+  // Upcoming cycle due card (prioritizes overdue, due today/soon, or nearest due date)
   const nearestDueCard = useMemo(() => {
     const activeWithDues = cardsWithMetrics.filter(
       (c) => c.outstanding > 0 && c.card.id !== snoozedAlertCardId
     );
     if (activeWithDues.length === 0) return null;
 
+    // Priority 1: Overdue cards first
+    const overdueCard = activeWithDues.find((c) => c.lifecycleStatus === 'OVERDUE');
+    if (overdueCard) return overdueCard;
+
+    // Priority 2: Due today or Due soon (<= 3 days)
+    const dueSoonCard = activeWithDues.find(
+      (c) => c.lifecycleStatus === 'DUE_TODAY' || c.lifecycleStatus === 'DUE_SOON'
+    );
+    if (dueSoonCard) return dueSoonCard;
+
+    // Priority 3: Grace period cards with closest payment due date
+    const graceCards = activeWithDues.filter(
+      (c) => c.lifecycleStatus === 'GRACE_PERIOD' && c.daysUntilDue !== null
+    );
+    if (graceCards.length > 0) {
+      return graceCards.reduce((min, curr) =>
+        (curr.daysUntilDue ?? 999) < (min.daysUntilDue ?? 999) ? curr : min
+      );
+    }
+
+    // Priority 4: Fallback to closest reset day
     return activeWithDues.reduce((min, curr) =>
       curr.daysRemaining < min.daysRemaining ? curr : min
     );
@@ -171,18 +219,32 @@ export default function CardsScreen() {
           />
         }
       >
-        {/* ─── Upcoming Cycle Due Alert Card ─── */}
+        {/* ─── Upcoming Cycle Due / Payment Alert Card ─── */}
         {nearestDueCard && (
           <Animated.View
             entering={FadeInDown.duration(500).delay(50)}
-            style={styles.alertCard}
+            style={[
+              styles.alertCard,
+              nearestDueCard.lifecycleStatus === 'OVERDUE' && styles.alertCardOverdue,
+              (nearestDueCard.lifecycleStatus === 'DUE_SOON' || nearestDueCard.lifecycleStatus === 'DUE_TODAY') && styles.alertCardDueSoon,
+            ]}
           >
             <View style={styles.alertCardTop}>
               <View style={styles.alertHeaderLeft}>
-                <View style={styles.alertIconCircle}>
-                  <AlertCircle size={16} color={Colors.warning} />
+                <View style={[styles.alertIconCircle, { backgroundColor: `${nearestDueCard.lifecycleStatusColor}22` }]}>
+                  <AlertCircle size={16} color={nearestDueCard.lifecycleStatusColor} />
                 </View>
-                <Text style={styles.alertCardEyebrow}>UPCOMING CYCLE DUE</Text>
+                <Text style={[styles.alertCardEyebrow, { color: nearestDueCard.lifecycleStatusColor }]}>
+                  {nearestDueCard.lifecycleStatus === 'OVERDUE'
+                    ? 'OVERDUE BILL PAYMENT'
+                    : nearestDueCard.lifecycleStatus === 'DUE_TODAY'
+                    ? 'BILL PAYMENT DUE TODAY'
+                    : nearestDueCard.lifecycleStatus === 'DUE_SOON'
+                    ? 'BILL DUE IN 3 DAYS OR LESS'
+                    : nearestDueCard.lifecycleStatus === 'GRACE_PERIOD'
+                    ? 'STATEMENT GENERATED • GRACE PERIOD'
+                    : 'UPCOMING BILLING CYCLE'}
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -196,10 +258,28 @@ export default function CardsScreen() {
 
             <View style={styles.alertCardBody}>
               <Text style={styles.alertCardTitle}>
-                {nearestDueCard.card.name} resets in{' '}
-                <Text style={styles.alertCardHighlight}>
-                  {nearestDueCard.daysRemaining} days
-                </Text>
+                {nearestDueCard.lifecycleStatus === 'OVERDUE' ? (
+                  <>
+                    {nearestDueCard.card.name} is{' '}
+                    <Text style={{ color: Colors.expense, fontWeight: '700' }}>
+                      OVERDUE by {Math.abs(nearestDueCard.daysUntilDue ?? 0)} days
+                    </Text>
+                  </>
+                ) : nearestDueCard.daysUntilDue !== null && nearestDueCard.lifecycleStatus !== 'UNBILLED' ? (
+                  <>
+                    {nearestDueCard.card.name} bill is due in{' '}
+                    <Text style={[styles.alertCardHighlight, { color: nearestDueCard.lifecycleStatusColor }]}>
+                      {nearestDueCard.daysUntilDue} days
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    {nearestDueCard.card.name} resets in{' '}
+                    <Text style={styles.alertCardHighlight}>
+                      {nearestDueCard.daysRemaining} days
+                    </Text>
+                  </>
+                )}
               </Text>
               <Text style={styles.alertCardSub}>
                 Current bill outstanding: ₹{nearestDueCard.outstanding.toLocaleString('en-IN')}
@@ -333,7 +413,15 @@ export default function CardsScreen() {
           </Animated.View>
         ) : (
           cardsWithMetrics.map((item, idx) => {
-          const { card, outstanding, utilizationPercentage, daysRemaining, statusColor } = item;
+          const {
+            card,
+            outstanding,
+            utilizationPercentage,
+            daysRemaining,
+            statusColor,
+            statusBadgeText,
+            lifecycleStatusColor,
+          } = item;
 
           return (
             <Animated.View
@@ -395,10 +483,15 @@ export default function CardsScreen() {
 
               {/* Cycle info & Pay Actions */}
               <View style={styles.cardFooter}>
-                <View style={styles.cycleInfo}>
-                  <Calendar size={13} color={Colors.onSurfaceVariant} />
-                  <Text style={styles.cycleText}>
-                    Resets on {card.cycle_reset_day}th ({daysRemaining}d left)
+                <View style={styles.cycleInfoCol}>
+                  <View style={styles.cycleRow}>
+                    <Calendar size={12} color={lifecycleStatusColor} />
+                    <Text style={[styles.cycleDueBadge, { color: lifecycleStatusColor }]}>
+                      {statusBadgeText}
+                    </Text>
+                  </View>
+                  <Text style={styles.cycleSubText}>
+                    Statement: {card.cycle_reset_day}th monthly ({daysRemaining}d to reset)
                   </Text>
                 </View>
 
@@ -499,6 +592,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245, 158, 11, 0.35)',
     gap: 8,
     ...Elevation.low,
+  },
+  alertCardOverdue: {
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  alertCardDueSoon: {
+    borderColor: 'rgba(245, 158, 11, 0.5)',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
   },
   alertCardTop: {
     flexDirection: 'row',
@@ -780,6 +881,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+  },
+  cycleInfoCol: {
+    gap: 2,
+    flex: 1,
+    paddingRight: 6,
+  },
+  cycleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  cycleDueBadge: {
+    ...Typography.bodySmMedium,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cycleSubText: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontSize: 10,
   },
   cycleText: {
     ...Typography.bodySm,

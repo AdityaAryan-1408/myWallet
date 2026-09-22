@@ -136,18 +136,29 @@ export const CreditCardRepository = {
     );
   },
 
+  isLastStatementPaid(cardId: string, lastStatementDate: string): boolean {
+    const db = getDatabase();
+    const row = db.getFirstSync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM transactions 
+       WHERE credit_card_id = ? AND type = 'transfer' AND date >= ?;`,
+      [cardId, lastStatementDate]
+    );
+    return (row?.count ?? 0) > 0;
+  },
+
   create(card: Omit<CreditCard, 'created_at'>): void {
     const db = getDatabase();
     const now = new Date().toISOString();
     db.runSync(
-      `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, is_active, notes, last4, color, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, payment_due_day, is_active, notes, last4, color, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         card.id,
         card.name,
         card.issuer,
         card.credit_limit,
         card.cycle_reset_day,
+        card.payment_due_day ?? null,
         card.is_active,
         card.notes ?? null,
         card.last4 ?? null,
@@ -161,13 +172,14 @@ export const CreditCardRepository = {
     const db = getDatabase();
     db.runSync(
       `UPDATE credit_cards 
-       SET name = ?, issuer = ?, credit_limit = ?, cycle_reset_day = ?, notes = ?, last4 = ?, color = ?
+       SET name = ?, issuer = ?, credit_limit = ?, cycle_reset_day = ?, payment_due_day = ?, notes = ?, last4 = ?, color = ?
        WHERE id = ?;`,
       [
         card.name,
         card.issuer,
         card.credit_limit,
         card.cycle_reset_day,
+        card.payment_due_day ?? null,
         card.notes ?? null,
         card.last4 ?? null,
         card.color,

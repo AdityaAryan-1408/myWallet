@@ -73,6 +73,13 @@ export function initDatabase(): void {
       // Column already exists
     }
 
+    // Migration: ensure payment_due_day column exists on credit_cards
+    try {
+      db.execSync('ALTER TABLE credit_cards ADD COLUMN payment_due_day INTEGER;');
+    } catch {
+      // Column already exists
+    }
+
     // Check if initial categories already exist
     const categoryCountResult = db.getFirstSync<{ count: number }>(
       'SELECT COUNT(*) as count FROM categories;'
@@ -146,8 +153,8 @@ function seedDatabase(db: SQLite.SQLiteDatabase): void {
 
   // Seed Credit Cards
   const cardStmt = db.prepareSync(
-    `INSERT OR IGNORE INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, is_active, last4, color, created_at)
-     VALUES ($id, $name, $issuer, $credit_limit, $cycle_reset_day, 1, $last4, $color, $created_at);`
+    `INSERT OR IGNORE INTO credit_cards (id, name, issuer, credit_limit, cycle_reset_day, payment_due_day, is_active, last4, color, created_at)
+     VALUES ($id, $name, $issuer, $credit_limit, $cycle_reset_day, $payment_due_day, 1, $last4, $color, $created_at);`
   );
   for (const card of SEED_DATA.creditCards) {
     cardStmt.executeSync({
@@ -156,6 +163,7 @@ function seedDatabase(db: SQLite.SQLiteDatabase): void {
       $issuer: card.issuer,
       $credit_limit: card.credit_limit,
       $cycle_reset_day: card.cycle_reset_day,
+      $payment_due_day: (card as any).payment_due_day ?? null,
       $last4: card.last4,
       $color: card.color,
       $created_at: now,

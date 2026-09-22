@@ -31,6 +31,7 @@ export interface SeedData {
     issuer: string;
     credit_limit: number;
     cycle_reset_day: number;
+    payment_due_day?: number;
     last4: string;
     color: string;
   }>;
@@ -108,8 +109,8 @@ export const SEED_DATA: SeedData = {
 
   // Credit cards totaling ₹24,680 outstanding
   creditCards: [
-    { id: 'card_hdfc', name: 'HDFC Millennia', issuer: 'HDFC Bank', credit_limit: 150000, cycle_reset_day: 20, last4: '4092', color: '#1E3A8A' },
-    { id: 'card_icici', name: 'Amazon Pay ICICI', issuer: 'ICICI Bank', credit_limit: 100000, cycle_reset_day: 12, last4: '8821', color: '#7C2D12' },
+    { id: 'card_hdfc', name: 'HDFC Millennia', issuer: 'HDFC Bank', credit_limit: 150000, cycle_reset_day: 20, payment_due_day: 10, last4: '4092', color: '#1E3A8A' },
+    { id: 'card_icici', name: 'Amazon Pay ICICI', issuer: 'ICICI Bank', credit_limit: 100000, cycle_reset_day: 12, payment_due_day: 2, last4: '8821', color: '#7C2D12' },
   ],
 
   // Reservations totaling ₹4,500

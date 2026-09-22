@@ -37,7 +37,10 @@ import {
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
 import { CreditCard } from '@/db/schema';
 import { CreditCardRepository, TransactionWithDetails, CategorySpend } from '@/repositories';
-import { calculateCardCycle } from '@/domain/financialCalculations';
+import {
+  calculateCardCycle,
+  calculateCreditCardLifecycle,
+} from '@/domain/financialCalculations';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
@@ -70,6 +73,25 @@ export function CardDetailModal({
     if (!card) return null;
     return calculateCardCycle(outstanding, card.credit_limit, card.cycle_reset_day);
   }, [card, outstanding]);
+
+  const isPaid = useMemo(() => {
+    if (!card || !cycleInfo) return false;
+    return CreditCardRepository.isLastStatementPaid(
+      card.id,
+      cycleInfo.cycleStartDate.toISOString().split('T')[0]
+    );
+  }, [card, cycleInfo]);
+
+  const lifecycle = useMemo(() => {
+    if (!card) return null;
+    return calculateCreditCardLifecycle(
+      outstanding,
+      card.credit_limit,
+      card.cycle_reset_day,
+      card.payment_due_day,
+      isPaid
+    );
+  }, [card, outstanding, isPaid]);
 
   const categoryBreakdown = useMemo<CategorySpend[]>(() => {
     if (!card) return [];
@@ -210,7 +232,7 @@ export function CardDetailModal({
               </View>
             </View>
 
-            {/* Metrics Breakdown Grid */}
+            {/* Metrics Breakdown Grid (2x2) */}
             <View style={styles.metricsGrid}>
               <View style={styles.metricTile}>
                 <Text style={styles.metricLabel}>CREDIT LIMIT</Text>
@@ -222,21 +244,50 @@ export function CardDetailModal({
                   ₹{availableCredit.toLocaleString('en-IN')}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.metricsGrid}>
               <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>RESET CYCLE</Text>
+                <Text style={styles.metricLabel}>BILL STATEMENT DAY</Text>
                 <Text style={styles.metricValue}>{card.cycle_reset_day}th monthly</Text>
+              </View>
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>PAYMENT DUE DAY</Text>
+                <Text style={[styles.metricValue, { color: card.payment_due_day ? Colors.onSurface : Colors.onSurfaceVariant }]}>
+                  {card.payment_due_day ? `${card.payment_due_day}th monthly` : 'Not set'}
+                </Text>
               </View>
             </View>
 
-            {/* Billing Cycle Countdown Banner */}
-            <View style={styles.cycleBanner}>
-              <Calendar size={18} color={Colors.primaryFixed} />
+            {/* Lifecycle & Billing Cycle Countdown Banner */}
+            <View
+              style={[
+                styles.cycleBanner,
+                lifecycle?.lifecycleStatus === 'OVERDUE' && styles.cycleBannerOverdue,
+                (lifecycle?.lifecycleStatus === 'DUE_SOON' || lifecycle?.lifecycleStatus === 'DUE_TODAY') && styles.cycleBannerDueSoon,
+              ]}
+            >
+              {lifecycle?.lifecycleStatus === 'OVERDUE' ? (
+                <AlertCircle size={20} color={Colors.expense} />
+              ) : lifecycle?.lifecycleStatus === 'DUE_SOON' || lifecycle?.lifecycleStatus === 'DUE_TODAY' ? (
+                <AlertCircle size={20} color={Colors.warning} />
+              ) : (
+                <Calendar size={18} color={lifecycle?.statusColor || Colors.primaryFixed} />
+              )}
               <View style={styles.cycleInfoText}>
-                <Text style={styles.cycleTitle}>
-                  Current cycle resets in {cycleInfo.daysRemaining} days
+                <Text
+                  style={[
+                    styles.cycleTitle,
+                    lifecycle?.lifecycleStatus === 'OVERDUE' && { color: Colors.expense, fontWeight: '700' },
+                    (lifecycle?.lifecycleStatus === 'DUE_SOON' || lifecycle?.lifecycleStatus === 'DUE_TODAY') && { color: Colors.warning, fontWeight: '700' },
+                  ]}
+                >
+                  {lifecycle ? lifecycle.statusBadgeText : `Current cycle resets in ${cycleInfo.daysRemaining} days`}
                 </Text>
                 <Text style={styles.cycleDates}>
-                  {cycleInfo.cycleStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {cycleInfo.cycleEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {lifecycle?.paymentDueDate
+                    ? `Statement: ${cycleInfo.cycleStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • Due: ${lifecycle.paymentDueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                    : `${cycleInfo.cycleStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${cycleInfo.cycleEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                 </Text>
               </View>
             </View>
@@ -516,6 +567,14 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.strokeSubtle,
+  },
+  cycleBannerOverdue: {
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  cycleBannerDueSoon: {
+    borderColor: 'rgba(245, 158, 11, 0.5)',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
   },
   cycleInfoText: {
     gap: 2,

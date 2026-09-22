@@ -43,7 +43,8 @@ export interface CreditCard {
   name: string;
   issuer: string;
   credit_limit: number;
-  cycle_reset_day: number; // 1..31
+  cycle_reset_day: number; // 1..31 (Statement generation date)
+  payment_due_day?: number | null; // 1..31 (Optional payment due date)
   is_active: number;       // 0 or 1
   notes?: string | null;
   last4?: string | null;
@@ -169,6 +170,7 @@ CREATE TABLE IF NOT EXISTS credit_cards (
   issuer TEXT NOT NULL,
   credit_limit REAL NOT NULL,
   cycle_reset_day INTEGER NOT NULL CHECK(cycle_reset_day BETWEEN 1 AND 31),
+  payment_due_day INTEGER CHECK(payment_due_day IS NULL OR (payment_due_day BETWEEN 1 AND 31)),
   is_active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
   last4 TEXT,
