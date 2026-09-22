@@ -28,6 +28,7 @@ import {
   Landmark,
   Coins,
   Star,
+  EyeOff,
 } from 'lucide-react-native';
 
 import { Account } from '@/db/schema';
@@ -57,6 +58,7 @@ export function AddEditAccountModal({
   const [balanceStr, setBalanceStr] = useState('');
   const [institution, setInstitution] = useState('');
   const [isPrimary, setIsPrimary] = useState(false);
+  const [excludeFromTotal, setExcludeFromTotal] = useState(false);
   const [notes, setNotes] = useState('');
 
   // Pre-fill for edit mode
@@ -67,6 +69,7 @@ export function AddEditAccountModal({
       setBalanceStr(accountToEdit.balance.toString());
       setInstitution(accountToEdit.institution || '');
       setIsPrimary(accountToEdit.is_primary === 1);
+      setExcludeFromTotal(accountToEdit.exclude_from_total === 1);
       setNotes(accountToEdit.notes || '');
     } else if (visible) {
       setName('');
@@ -74,6 +77,7 @@ export function AddEditAccountModal({
       setBalanceStr('');
       setInstitution('');
       setIsPrimary(false);
+      setExcludeFromTotal(false);
       setNotes('');
     }
   }, [visible, accountToEdit]);
@@ -92,6 +96,7 @@ export function AddEditAccountModal({
         balance,
         institution: institution.trim() || null,
         is_primary: isPrimary ? 1 : 0,
+        exclude_from_total: excludeFromTotal ? 1 : 0,
         notes: notes.trim() || null,
       });
     } else {
@@ -104,6 +109,7 @@ export function AddEditAccountModal({
         currency: 'INR',
         is_primary: isPrimary ? 1 : 0,
         is_active: 1,
+        exclude_from_total: excludeFromTotal ? 1 : 0,
         display_order: 99,
         notes: notes.trim() || null,
       });
@@ -277,6 +283,28 @@ export function AddEditAccountModal({
                 true: 'rgba(200, 243, 34, 0.35)',
               }}
               thumbColor={isPrimary ? Colors.primaryFixed : Colors.onSurfaceVariant}
+            />
+          </View>
+
+          {/* ─── Exclude from Available Toggle ─── */}
+          <View style={styles.toggleRow}>
+            <View style={[styles.toggleLeft, { flex: 1, paddingRight: Spacing.sm }]}>
+              <EyeOff size={16} color={excludeFromTotal ? Colors.warning : Colors.onSurfaceVariant} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleTitle}>Exclude from Total</Text>
+                <Text style={styles.toggleSub}>
+                  Exclude balance from Available to Spend. Adding or spending here won't affect the total.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={excludeFromTotal}
+              onValueChange={setExcludeFromTotal}
+              trackColor={{
+                false: Colors.surfaceContainerHigh,
+                true: 'rgba(245, 158, 11, 0.35)',
+              }}
+              thumbColor={excludeFromTotal ? Colors.warning : Colors.onSurfaceVariant}
             />
           </View>
 

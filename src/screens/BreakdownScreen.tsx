@@ -56,6 +56,7 @@ export default function BreakdownScreen() {
   const {
     availableToSpend,
     totalBankCashBalance,
+    totalAvailableBankCashBalance,
     totalCreditObligations,
     totalReservedMoney,
     accounts,
@@ -230,29 +231,37 @@ export default function BreakdownScreen() {
               <Text style={styles.stepTitle}>Total Liquid Funds</Text>
             </View>
             <Text style={[styles.stepTotal, { color: Colors.income }]}>
-              +₹{totalBankCashBalance.toLocaleString('en-IN')}
+              +₹{(totalAvailableBankCashBalance ?? totalBankCashBalance).toLocaleString('en-IN')}
             </Text>
           </View>
 
           {/* Itemised accounts */}
-          {activeAccounts.map((acc) => (
-            <View key={acc.id} style={styles.itemRow}>
-              <View style={styles.itemLeft}>
-                {acc.type === 'bank' ? (
-                  <Landmark size={14} color={Colors.onSurfaceVariant} />
-                ) : (
-                  <Coins size={14} color={Colors.onSurfaceVariant} />
-                )}
-                <Text style={styles.itemName}>
-                  {acc.name}
-                  {acc.is_primary ? ' (Primary)' : ''}
+          {activeAccounts.map((acc) => {
+            const isExcluded = acc.exclude_from_total === 1;
+            return (
+              <View key={acc.id} style={[styles.itemRow, isExcluded && { opacity: 0.6 }]}>
+                <View style={styles.itemLeft}>
+                  {acc.type === 'bank' ? (
+                    <Landmark size={14} color={isExcluded ? Colors.warning : Colors.onSurfaceVariant} />
+                  ) : (
+                    <Coins size={14} color={isExcluded ? Colors.warning : Colors.onSurfaceVariant} />
+                  )}
+                  <Text style={[styles.itemName, isExcluded && { textDecorationLine: 'line-through', color: Colors.onSurfaceVariant }]}>
+                    {acc.name}
+                    {acc.is_primary ? ' (Primary)' : ''}
+                  </Text>
+                  {isExcluded && (
+                    <Text style={{ fontSize: 9, color: Colors.warning, fontWeight: '700', marginLeft: 4 }}>
+                      [EXCLUDED]
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.itemAmount, isExcluded && { textDecorationLine: 'line-through', color: Colors.onSurfaceVariant }]}>
+                  ₹{acc.balance.toLocaleString('en-IN')}
                 </Text>
               </View>
-              <Text style={styles.itemAmount}>
-                ₹{acc.balance.toLocaleString('en-IN')}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
 
           {activeAccounts.length === 0 && (
             <Text style={styles.emptyHint}>No active accounts configured</Text>

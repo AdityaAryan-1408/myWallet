@@ -11,6 +11,7 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.aditya.mywallet",
       "adaptiveIcon": {
         "backgroundColor": "#101319",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

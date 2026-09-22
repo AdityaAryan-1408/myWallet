@@ -5,6 +5,7 @@
  * recent transactions, and category spending distributions.
  */
 
+import { NativeModules } from 'react-native';
 import { create } from 'zustand';
 import { initDatabase } from '@/db/client';
 import { Account, CreditCard, Reservation, Transaction, Category, PeopleDebt, DebtRepayment } from '@/db/schema';
@@ -39,6 +40,7 @@ interface FinancialState {
   // Derived Core Metrics
   availableToSpend: number;
   totalBankCashBalance: number;
+  totalAvailableBankCashBalance: number;
   totalCreditObligations: number;
   totalReservedMoney: number;
   dailySpendLimit: number;
@@ -71,8 +73,9 @@ interface FinancialState {
   deleteBudget: (id: string) => void;
   // Account CRUD (Phase 9)
   createAccount: (data: Omit<Account, 'created_at' | 'updated_at'>) => void;
-  updateAccount: (id: string, fields: Partial<Pick<Account, 'name' | 'type' | 'balance' | 'institution' | 'is_primary' | 'notes'>>) => void;
+  updateAccount: (id: string, fields: Partial<Pick<Account, 'name' | 'type' | 'balance' | 'institution' | 'is_primary' | 'exclude_from_total' | 'notes'>>) => void;
   deleteAccount: (id: string) => void;
+  toggleAccountExclusion: (id: string, exclude: boolean) => void;
   // Reservation CRUD (Phase 9)
   createReservation: (data: Omit<Reservation, 'created_at'>) => void;
   updateReservation: (id: string, fields: Partial<Pick<Reservation, 'name' | 'amount' | 'target_amount' | 'note' | 'affects_available'>>) => void;
@@ -101,6 +104,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   themeMode: 'dark',
   availableToSpend: 0,
   totalBankCashBalance: 0,
+  totalAvailableBankCashBalance: 0,
   totalCreditObligations: 0,
   totalReservedMoney: 0,
   dailySpendLimit: 0,
@@ -128,7 +132,15 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const userName = SettingsRepository.getUserName();
       const avatarBadge = SettingsRepository.getAvatarBadge();
       const currency = SettingsRepository.getCurrency();
-      const themeMode = SettingsRepository.getThemeMode();
+      let themeMode = SettingsRepository.getThemeMode();
+      try {
+        if (NativeModules.AppTheme?.getTheme) {
+          const nativeTheme = NativeModules.AppTheme.getTheme();
+          if (nativeTheme === 'light' || nativeTheme === 'dark') {
+            themeMode = nativeTheme;
+          }
+        }
+      } catch {}
       get().refreshFinancials();
       set({ isInitialized: true, userName, avatarBadge, currency, themeMode });
     } catch (error) {
@@ -167,6 +179,9 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   setThemeMode: (mode: 'dark' | 'light' | 'system') => {
     try {
       SettingsRepository.setThemeMode(mode);
+      if (NativeModules.AppTheme?.setTheme) {
+        NativeModules.AppTheme.setTheme(mode);
+      }
       set({ themeMode: mode });
     } catch (error) {
       console.error('Error saving theme mode:', error);
@@ -244,6 +259,15 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       get().refreshFinancials();
     } catch (error) {
       console.error('Error deleting account:', error);
+    }
+  },
+
+  toggleAccountExclusion: (id, exclude) => {
+    try {
+      AccountRepository.toggleExcludeFromTotal(id, exclude);
+      get().refreshFinancials();
+    } catch (error) {
+      console.error('Error toggling account exclusion:', error);
     }
   },
 
@@ -409,12 +433,13 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const debtSummary = DebtRepository.getDebtSummary();
 
       const totalBankCashBalance = AccountRepository.getTotalBankCashBalance();
+      const totalAvailableBankCashBalance = AccountRepository.getTotalAvailableBankCashBalance();
       const totalCreditObligations = CreditCardRepository.getTotalCreditObligations();
       const totalReservedMoney = ReservationRepository.getTotalReservedAffectingAvailable();
 
       // 2. Compute central domain calculation
       const { availableToSpend } = calculateAvailableToSpend({
-        totalBankCashBalance,
+        totalBankCashBalance: totalAvailableBankCashBalance,
         totalCreditObligations,
         totalReservedMoney,
       });
@@ -425,6 +450,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       set({
         availableToSpend,
         totalBankCashBalance,
+        totalAvailableBankCashBalance,
         totalCreditObligations,
         totalReservedMoney,
         dailySpendLimit: dailyLimit,

@@ -39,6 +39,14 @@ export const AccountRepository = {
     return row?.total ?? 0;
   },
 
+  getTotalAvailableBankCashBalance(): number {
+    const db = getDatabase();
+    const row = db.getFirstSync<{ total: number | null }>(
+      'SELECT SUM(balance) as total FROM accounts WHERE is_active = 1 AND (exclude_from_total IS NULL OR exclude_from_total = 0);'
+    );
+    return row?.total ?? 0;
+  },
+
   updateBalance(id: string, newBalance: number): void {
     const db = getDatabase();
     const now = new Date().toISOString();
@@ -52,8 +60,8 @@ export const AccountRepository = {
     const db = getDatabase();
     const now = new Date().toISOString();
     db.runSync(
-      `INSERT INTO accounts (id, name, type, balance, institution, currency, is_primary, is_active, display_order, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO accounts (id, name, type, balance, institution, currency, is_primary, is_active, exclude_from_total, display_order, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         account.id,
         account.name,
@@ -63,6 +71,7 @@ export const AccountRepository = {
         account.currency || 'INR',
         account.is_primary,
         account.is_active,
+        account.exclude_from_total ?? 0,
         account.display_order,
         account.notes ?? null,
         now,
@@ -82,7 +91,7 @@ export const AccountRepository = {
 
   update(
     id: string,
-    fields: Partial<Pick<Account, 'name' | 'type' | 'balance' | 'institution' | 'is_primary' | 'notes' | 'display_order'>>,
+    fields: Partial<Pick<Account, 'name' | 'type' | 'balance' | 'institution' | 'is_primary' | 'is_active' | 'exclude_from_total' | 'notes' | 'display_order'>>,
   ): void {
     const db = getDatabase();
     const now = new Date().toISOString();
@@ -94,6 +103,8 @@ export const AccountRepository = {
     if (fields.balance !== undefined) { sets.push('balance = ?'); values.push(fields.balance); }
     if (fields.institution !== undefined) { sets.push('institution = ?'); values.push(fields.institution); }
     if (fields.is_primary !== undefined) { sets.push('is_primary = ?'); values.push(fields.is_primary); }
+    if (fields.is_active !== undefined) { sets.push('is_active = ?'); values.push(fields.is_active); }
+    if (fields.exclude_from_total !== undefined) { sets.push('exclude_from_total = ?'); values.push(fields.exclude_from_total); }
     if (fields.notes !== undefined) { sets.push('notes = ?'); values.push(fields.notes); }
     if (fields.display_order !== undefined) { sets.push('display_order = ?'); values.push(fields.display_order); }
 
@@ -101,6 +112,16 @@ export const AccountRepository = {
     sets.push('updated_at = ?');
     values.push(now, id);
     db.runSync(`UPDATE accounts SET ${sets.join(', ')} WHERE id = ?;`, values);
+  },
+
+  toggleExcludeFromTotal(id: string, exclude: boolean): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    db.runSync('UPDATE accounts SET exclude_from_total = ?, updated_at = ? WHERE id = ?;', [
+      exclude ? 1 : 0,
+      now,
+      id,
+    ]);
   },
 
   delete(id: string): void {

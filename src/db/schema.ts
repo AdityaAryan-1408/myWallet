@@ -17,6 +17,7 @@ export interface Account {
   currency: string;
   is_primary: number; // 0 or 1
   is_active: number;  // 0 or 1
+  exclude_from_total: number; // 0 or 1 (0 = included in Available to Spend, 1 = excluded)
   display_order: number;
   notes?: string | null;
   created_at: string;
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   currency TEXT NOT NULL DEFAULT 'INR',
   is_primary INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
+  exclude_from_total INTEGER NOT NULL DEFAULT 0,
   display_order INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   created_at TEXT NOT NULL,

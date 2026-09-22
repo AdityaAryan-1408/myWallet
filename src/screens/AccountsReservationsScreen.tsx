@@ -39,6 +39,7 @@ import {
   AlertCircle,
   CreditCard as CreditCardIcon,
   ChevronRight,
+  EyeOff,
 } from 'lucide-react-native';
 
 import { Account, Reservation } from '@/db/schema';
@@ -381,11 +382,16 @@ export default function AccountsReservationsScreen() {
                 {activeAccounts.map((account) => {
                   const isBank = account.type === 'bank';
                   const isPrimary = account.is_primary === 1;
+                  const isExcluded = account.exclude_from_total === 1;
 
                   return (
                     <TouchableOpacity
                       key={account.id}
-                      style={[styles.accountCard, isPrimary && styles.primaryAccountCard]}
+                      style={[
+                        styles.accountCard,
+                        isPrimary && styles.primaryAccountCard,
+                        isExcluded && styles.excludedAccountCard,
+                      ]}
                       onPress={() => handleOpenEditAccount(account)}
                       activeOpacity={0.75}
                     >
@@ -398,19 +404,27 @@ export default function AccountsReservationsScreen() {
                             ]}
                           >
                             {isBank ? (
-                              <Landmark size={18} color={Colors.primaryFixed} />
+                              <Landmark size={18} color={isExcluded ? Colors.onSurfaceVariant : Colors.primaryFixed} />
                             ) : (
-                              <Coins size={18} color={Colors.secondaryFixed} />
+                              <Coins size={18} color={isExcluded ? Colors.onSurfaceVariant : Colors.secondaryFixed} />
                             )}
                           </View>
 
                           <View style={styles.accountInfo}>
                             <View style={styles.accountNameRow}>
-                              <Text style={styles.accountName}>{account.name}</Text>
+                              <Text style={[styles.accountName, isExcluded && styles.accountNameExcluded]}>
+                                {account.name}
+                              </Text>
                               {isPrimary && (
                                 <View style={styles.primaryBadge}>
                                   <Star size={10} color="#000" fill="#000" />
                                   <Text style={styles.primaryBadgeText}>PRIMARY</Text>
+                                </View>
+                              )}
+                              {isExcluded && (
+                                <View style={styles.excludedBadge}>
+                                  <EyeOff size={9} color={Colors.warning} />
+                                  <Text style={styles.excludedBadgeText}>EXCLUDED</Text>
                                 </View>
                               )}
                             </View>
@@ -422,9 +436,14 @@ export default function AccountsReservationsScreen() {
                         </View>
 
                         <View style={styles.cardRight}>
-                          <Text style={styles.balanceText}>
-                            ₹{account.balance.toLocaleString('en-IN')}
-                          </Text>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.balanceText, isExcluded && styles.balanceTextExcluded]}>
+                              ₹{account.balance.toLocaleString('en-IN')}
+                            </Text>
+                            {isExcluded && (
+                              <Text style={styles.excludedSubText}>Excluded from Total</Text>
+                            )}
+                          </View>
                           <ChevronRight size={16} color={Colors.onSurfaceVariant} />
                         </View>
                       </View>
@@ -975,6 +994,39 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 8,
     fontWeight: '800',
+  },
+  excludedAccountCard: {
+    opacity: 0.9,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+  },
+  accountNameExcluded: {
+    color: Colors.onSurfaceVariant,
+  },
+  excludedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: Shapes.pill,
+  },
+  excludedBadgeText: {
+    ...Typography.labelCaps,
+    color: Colors.warning,
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  balanceTextExcluded: {
+    color: Colors.onSurfaceVariant,
+  },
+  excludedSubText: {
+    ...Typography.bodySm,
+    color: Colors.warning,
+    fontSize: 9,
+    fontWeight: '600',
   },
   accountSub: {
     ...Typography.bodySm,

@@ -59,6 +59,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     userName,
     availableToSpend,
     totalBankCashBalance,
+    totalAvailableBankCashBalance,
     totalCreditObligations,
     totalReservedMoney,
     dailySpendLimit,
@@ -185,9 +186,9 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 style={styles.breakdownContainer}
               >
                 <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>Total Bank & Cash Balances</Text>
+                  <Text style={styles.breakdownLabel}>Bank & Cash (in Total)</Text>
                   <Text style={[styles.breakdownValue, { color: Colors.income }]}>
-                    +₹{totalBankCashBalance.toLocaleString('en-IN')}
+                    +₹{(totalAvailableBankCashBalance ?? totalBankCashBalance).toLocaleString('en-IN')}
                   </Text>
                 </View>
                 <View style={styles.breakdownRow}>

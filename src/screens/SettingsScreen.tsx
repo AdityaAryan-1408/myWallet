@@ -19,6 +19,7 @@ import {
   Alert,
   Platform,
   DevSettings,
+  NativeModules,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -160,25 +161,26 @@ export function SettingsScreen() {
         }
       }, 100);
     } else {
-      Alert.alert(
-        'Theme Preference Saved',
-        `Theme switched to ${mode === 'light' ? 'Light' : 'Dark'}. Reload the app now to apply the new theme?`,
-        [
-          { text: 'Later', style: 'cancel' },
-          {
-            text: 'Reload Now',
-            onPress: () => {
-              try {
-                if (__DEV__ && DevSettings?.reload) {
-                  DevSettings.reload();
-                }
-              } catch (e) {
-                console.warn('Could not reload:', e);
-              }
-            },
-          },
-        ]
-      );
+      // Native Android / iOS: Save to SharedPreferences and restart smoothly
+      try {
+        if (NativeModules.AppTheme?.setTheme) {
+          NativeModules.AppTheme.setTheme(mode);
+        }
+      } catch (e) {
+        console.warn('Could not set native theme:', e);
+      }
+
+      setTimeout(() => {
+        try {
+          if (NativeModules.AppTheme?.restartApp) {
+            NativeModules.AppTheme.restartApp();
+          } else if (__DEV__ && DevSettings?.reload) {
+            DevSettings.reload();
+          }
+        } catch (e) {
+          console.warn('Could not restart app:', e);
+        }
+      }, 150);
     }
   };
 

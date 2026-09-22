@@ -177,7 +177,7 @@ export const LightColors: typeof DarkColors = {
   categoryOther: '#64748B',
 };
 
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 // Check stored theme synchronously at module load
 export function getInitialTheme(): 'dark' | 'light' {
@@ -191,8 +191,20 @@ export function getInitialTheme(): 'dark' | 'light' {
       }
     }
   } else {
+    // 1. Check Android NativeModules synchronously (from SharedPreferences)
     try {
-      const { getDatabase } = require('@/db/client');
+      if (NativeModules.AppTheme?.getTheme) {
+        const nativeTheme = NativeModules.AppTheme.getTheme();
+        if (nativeTheme === 'light') return 'light';
+        if (nativeTheme === 'dark') return 'dark';
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Fallback check from SQLite database
+    try {
+      const { getDatabase } = require('../db/client');
       const db = getDatabase();
       const row = db.getFirstSync("SELECT value FROM user_settings WHERE key = 'theme_mode';");
       if (row?.value === 'light') return 'light';

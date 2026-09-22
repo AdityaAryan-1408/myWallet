@@ -66,6 +66,13 @@ export function initDatabase(): void {
     db.execSync(CREATE_BUDGETS_TABLE);
     db.execSync(CREATE_INDEXES);
 
+    // Migration: ensure exclude_from_total column exists on accounts
+    try {
+      db.execSync('ALTER TABLE accounts ADD COLUMN exclude_from_total INTEGER NOT NULL DEFAULT 0;');
+    } catch {
+      // Column already exists
+    }
+
     // Check if initial categories already exist
     const categoryCountResult = db.getFirstSync<{ count: number }>(
       'SELECT COUNT(*) as count FROM categories;'
