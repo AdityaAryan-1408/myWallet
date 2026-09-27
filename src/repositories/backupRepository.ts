@@ -17,6 +17,7 @@ import {
   Budget,
   DashboardNote,
   UserSetting,
+  InAppNotification,
 } from '@/db/schema';
 import { SEED_DATA } from '@/db/seed';
 import { SettingsRepository } from './settingsRepository';
@@ -33,6 +34,7 @@ export interface BackupPayload {
     categories: number;
     debts: number;
     budgets: number;
+    notifications?: number;
   };
   tables: {
     accounts: Account[];
@@ -45,6 +47,7 @@ export interface BackupPayload {
     budgets: Budget[];
     dashboardNotes: DashboardNote[];
     userSettings: UserSetting[];
+    inAppNotifications?: InAppNotification[];
   };
 }
 
@@ -81,6 +84,7 @@ export const BackupRepository = {
     const budgets = db.getAllSync<Budget>('SELECT * FROM budgets;') || [];
     const dashboardNotes = db.getAllSync<DashboardNote>('SELECT * FROM dashboard_notes;') || [];
     const userSettings = db.getAllSync<UserSetting>('SELECT * FROM user_settings;') || [];
+    const inAppNotifications = db.getAllSync<InAppNotification>('SELECT * FROM in_app_notifications ORDER BY created_at DESC;') || [];
 
     const payload: BackupPayload = {
       app: 'MyWallet',
@@ -94,6 +98,7 @@ export const BackupRepository = {
         categories: categories.length,
         debts: peopleDebts.length,
         budgets: budgets.length,
+        notifications: inAppNotifications.length,
       },
       tables: {
         accounts,
@@ -106,6 +111,7 @@ export const BackupRepository = {
         budgets,
         dashboardNotes,
         userSettings,
+        inAppNotifications,
       },
     };
 
@@ -137,15 +143,17 @@ export const BackupRepository = {
       db.execSync('DELETE FROM categories;');
       db.execSync('DELETE FROM accounts;');
       db.execSync('DELETE FROM dashboard_notes;');
+      db.execSync('DELETE FROM in_app_notifications;');
+      db.execSync('DELETE FROM user_settings;');
       db.execSync('PRAGMA foreign_keys = ON;');
 
       // Insert Accounts
       if (tables.accounts?.length) {
         for (const a of tables.accounts) {
           db.runSync(
-            `INSERT INTO accounts (id, name, type, balance, institution, currency, is_primary, is_active, display_order, notes, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-            [a.id, a.name, a.type, a.balance, a.institution ?? null, a.currency || 'INR', a.is_primary, a.is_active, a.display_order, a.notes ?? null, a.created_at, a.updated_at]
+            `INSERT INTO accounts (id, name, type, balance, institution, currency, is_primary, is_active, display_order, notes, created_at, updated_at, exclude_from_total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [a.id, a.name, a.type, a.balance, a.institution ?? null, a.currency || 'INR', a.is_primary, a.is_active, a.display_order, a.notes ?? null, a.created_at, a.updated_at, a.exclude_from_total ?? 0]
           );
         }
       }
@@ -198,9 +206,27 @@ export const BackupRepository = {
       if (tables.peopleDebts?.length) {
         for (const d of tables.peopleDebts) {
           db.runSync(
-            `INSERT INTO people_debts (id, person_name, amount, direction, reason, note, linked_transaction_id, is_settled, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-            [d.id, d.person_name, d.amount, d.direction, d.reason ?? null, d.note ?? null, d.linked_transaction_id ?? null, d.is_settled, d.created_at]
+            `INSERT INTO people_debts (
+              id, person_name, amount, direction, reason, note, upi_id,
+              linked_transaction_id, is_settled, reminder_cadence,
+              reminder_date, reminder_time, last_reminded_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [
+              d.id,
+              d.person_name,
+              d.amount,
+              d.direction,
+              d.reason ?? null,
+              d.note ?? null,
+              d.upi_id ?? null,
+              d.linked_transaction_id ?? null,
+              d.is_settled,
+              d.reminder_cadence ?? 'none',
+              d.reminder_date ?? null,
+              d.reminder_time ?? null,
+              d.last_reminded_at ?? null,
+              d.created_at,
+            ]
           );
         }
       }
@@ -238,6 +264,42 @@ export const BackupRepository = {
         }
       }
 
+      // Insert User Settings
+      if (tables.userSettings?.length) {
+        for (const s of tables.userSettings) {
+          db.runSync(
+            `INSERT OR REPLACE INTO user_settings (key, value, updated_at)
+             VALUES (?, ?, ?);`,
+            [s.key, s.value, s.updated_at || new Date().toISOString()]
+          );
+        }
+      }
+
+      // Insert In-App Notifications
+      if (tables.inAppNotifications?.length) {
+        for (const n of tables.inAppNotifications) {
+          db.runSync(
+            `INSERT INTO in_app_notifications (
+              id, type, title, body, entity_type, entity_id, is_read, is_dismissed, action_type, action_payload, scheduled_for, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [
+              n.id,
+              n.type,
+              n.title,
+              n.body,
+              n.entity_type ?? null,
+              n.entity_id ?? null,
+              n.is_read ?? 0,
+              n.is_dismissed ?? 0,
+              n.action_type ?? null,
+              n.action_payload ?? null,
+              n.scheduled_for ?? null,
+              n.created_at,
+            ]
+          );
+        }
+      }
+
       return {
         success: true,
         message: 'Database successfully restored from backup.',
@@ -268,6 +330,7 @@ export const BackupRepository = {
     db.execSync('DELETE FROM dashboard_notes;');
     db.execSync('DELETE FROM budgets;');
     db.execSync('DELETE FROM credit_cards;');
+    db.execSync('DELETE FROM in_app_notifications;');
     db.execSync('DELETE FROM accounts;');
 
     if (keepSeed) {
@@ -310,9 +373,9 @@ export const BackupRepository = {
       // Re-seed debts
       for (const d of SEED_DATA.debts) {
         db.runSync(
-          `INSERT INTO people_debts (id, person_name, amount, direction, reason, is_settled, created_at)
-           VALUES (?, ?, ?, ?, ?, 0, ?);`,
-          [d.id, d.person_name, d.amount, d.direction, d.reason, now]
+          `INSERT INTO people_debts (id, person_name, amount, direction, reason, note, upi_id, is_settled, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?);`,
+          [d.id, d.person_name, d.amount, d.direction, d.reason, (d as any).note ?? null, (d as any).upi_id ?? null, now]
         );
       }
 

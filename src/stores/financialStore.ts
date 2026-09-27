@@ -8,7 +8,7 @@
 import { NativeModules } from 'react-native';
 import { create } from 'zustand';
 import { initDatabase } from '@/db/client';
-import { Account, CreditCard, Reservation, Transaction, Category, PeopleDebt, DebtRepayment } from '@/db/schema';
+import { Account, CreditCard, Reservation, Transaction, Category, PeopleDebt, DebtRepayment, InAppNotification } from '@/db/schema';
 import {
   AccountRepository,
   CreditCardRepository,
@@ -21,11 +21,13 @@ import {
   DebtRepository,
   DebtWithRepayments,
   DebtSummary,
+  NotificationRepository,
   CategorySpend,
   MonthlyTotals,
   BudgetWithProgress,
   OverallBudgetProgress,
 } from '@/repositories';
+import { NotificationService, WidgetService } from '@/services';
 import {
   calculateAvailableToSpend,
   calculateDailyPacing,
@@ -59,6 +61,8 @@ interface FinancialState {
   categoriesWithStats: CategoryWithStats[];
   debts: DebtWithRepayments[];
   debtSummary: DebtSummary | null;
+  inAppNotifications: InAppNotification[];
+  unreadNotificationsCount: number;
 
   // Actions
   initialize: () => void;
@@ -88,12 +92,17 @@ interface FinancialState {
   refreshCategories: () => void;
   // People & Debts (Phase 11)
   createDebt: (data: Omit<PeopleDebt, 'created_at'>) => void;
-  updateDebt: (id: string, fields: Partial<Pick<PeopleDebt, 'person_name' | 'amount' | 'direction' | 'reason' | 'note' | 'is_settled'>>) => void;
+  updateDebt: (id: string, fields: Partial<Pick<PeopleDebt, 'person_name' | 'amount' | 'direction' | 'reason' | 'note' | 'upi_id' | 'is_settled' | 'reminder_cadence' | 'reminder_date' | 'reminder_time' | 'last_reminded_at'>>) => void;
   deleteDebt: (id: string) => void;
   settleDebt: (id: string) => void;
   unsettleDebt: (id: string) => void;
   recordDebtRepayment: (debtId: string, amount: number, date: string, note?: string) => void;
   refreshDebts: () => void;
+  // Notifications (Phase 16)
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: () => void;
+  dismissNotification: (id: string) => void;
+  refreshNotifications: () => void;
 }
 
 export const useFinancialStore = create<FinancialState>((set, get) => ({
@@ -125,10 +134,13 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   categoriesWithStats: [],
   debts: [],
   debtSummary: null,
+  inAppNotifications: [],
+  unreadNotificationsCount: 0,
 
   initialize: () => {
     try {
       initDatabase();
+      NotificationService.initialize().catch((e) => console.warn('NotificationService init error:', e));
       const userName = SettingsRepository.getUserName();
       const avatarBadge = SettingsRepository.getAvatarBadge();
       const currency = SettingsRepository.getCurrency();
@@ -200,6 +212,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   deleteCard: (id: string) => {
     try {
       CreditCardRepository.delete(id);
+      NotificationService.onCardBillPaid(id).catch(() => {});
       get().refreshFinancials();
     } catch (error) {
       console.error('Error deleting credit card:', error);
@@ -348,10 +361,15 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
     }
   },
 
-  // ─── People & Debts CRUD (Phase 11) ─────────────────────────────
+  // ─── People & Debts CRUD (Phase 11 & 16) ─────────────────────────
   createDebt: (data) => {
     try {
       DebtRepository.create(data);
+      NotificationService.scheduleDebtReminder({
+        ...data,
+        is_settled: 0,
+        created_at: new Date().toISOString(),
+      }).catch(() => {});
       get().refreshFinancials();
     } catch (error) {
       console.error('Error creating debt:', error);
@@ -361,6 +379,10 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   updateDebt: (id, fields) => {
     try {
       DebtRepository.update(id, fields);
+      const updated = DebtRepository.getById(id);
+      if (updated) {
+        NotificationService.scheduleDebtReminder(updated).catch(() => {});
+      }
       get().refreshFinancials();
     } catch (error) {
       console.error('Error updating debt:', error);
@@ -370,6 +392,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   deleteDebt: (id) => {
     try {
       DebtRepository.delete(id);
+      NotificationService.onDebtSettled(id).catch(() => {});
       get().refreshFinancials();
     } catch (error) {
       console.error('Error deleting debt:', error);
@@ -379,6 +402,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   settleDebt: (id) => {
     try {
       DebtRepository.settle(id);
+      NotificationService.onDebtSettled(id).catch(() => {});
       get().refreshFinancials();
     } catch (error) {
       console.error('Error settling debt:', error);
@@ -388,6 +412,10 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   unsettleDebt: (id) => {
     try {
       DebtRepository.unsettle(id);
+      const updated = DebtRepository.getById(id);
+      if (updated) {
+        NotificationService.scheduleDebtReminder(updated).catch(() => {});
+      }
       get().refreshFinancials();
     } catch (error) {
       console.error('Error unsettling debt:', error);
@@ -397,6 +425,10 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   recordDebtRepayment: (debtId, amount, date, note) => {
     try {
       DebtRepository.recordRepayment(debtId, amount, date, note);
+      const debt = DebtRepository.getById(debtId);
+      if (debt && debt.is_settled === 1) {
+        NotificationService.onDebtSettled(debtId).catch(() => {});
+      }
       get().refreshFinancials();
     } catch (error) {
       console.error('Error recording debt repayment:', error);
@@ -410,6 +442,44 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       set({ debts, debtSummary });
     } catch (error) {
       console.error('Error refreshing debts:', error);
+    }
+  },
+
+  // ─── Notification Actions (Phase 16) ─────────────────────────────
+  markNotificationAsRead: (id) => {
+    try {
+      NotificationRepository.markAsRead(id);
+      get().refreshNotifications();
+    } catch (error) {
+      console.error('Error marking notification read:', error);
+    }
+  },
+
+  markAllNotificationsAsRead: () => {
+    try {
+      NotificationRepository.markAllAsRead();
+      get().refreshNotifications();
+    } catch (error) {
+      console.error('Error marking all notifications read:', error);
+    }
+  },
+
+  dismissNotification: (id) => {
+    try {
+      NotificationRepository.dismiss(id);
+      get().refreshNotifications();
+    } catch (error) {
+      console.error('Error dismissing notification:', error);
+    }
+  },
+
+  refreshNotifications: () => {
+    try {
+      const inAppNotifications = NotificationRepository.getAll();
+      const unreadNotificationsCount = NotificationRepository.getUnreadCount();
+      set({ inAppNotifications, unreadNotificationsCount });
+    } catch (error) {
+      console.error('Error refreshing notifications:', error);
     }
   },
 
@@ -431,6 +501,11 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const categoriesWithStats = CategoryRepository.getCategoriesWithStats(undefined, currentYearMonth);
       const debts = DebtRepository.getAllWithRepayments();
       const debtSummary = DebtRepository.getDebtSummary();
+      const inAppNotifications = NotificationRepository.getAll();
+      const unreadNotificationsCount = NotificationRepository.getUnreadCount();
+
+      // Background notification sync
+      NotificationService.syncAllReminders().catch(() => {});
 
       const totalBankCashBalance = AccountRepository.getTotalBankCashBalance();
       const totalAvailableBankCashBalance = AccountRepository.getTotalAvailableBankCashBalance();
@@ -446,6 +521,10 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
 
       // 3. Compute daily pacing limit
       const { dailyLimit, daysRemaining } = calculateDailyPacing(availableToSpend, now);
+
+      // Sync native Android Home Screen Widget in real time (Phase 18)
+      const statusText = availableToSpend > 0 ? (dailyLimit >= 300 ? 'HEALTHY' : 'CAUTION') : 'EXCEEDED';
+      WidgetService.syncWidget(availableToSpend, dailyLimit, '₹', statusText).catch(() => {});
 
       set({
         availableToSpend,
@@ -467,6 +546,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
         categoriesWithStats,
         debts,
         debtSummary,
+        inAppNotifications,
+        unreadNotificationsCount,
       });
     } catch (error) {
       console.error('Error refreshing financials:', error);

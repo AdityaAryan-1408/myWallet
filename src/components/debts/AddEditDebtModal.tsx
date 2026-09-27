@@ -30,11 +30,15 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Calendar,
+  Bell,
+  AtSign,
+  Zap,
 } from 'lucide-react-native';
 
-import { PeopleDebt, DebtDirection } from '@/db/schema';
+import { PeopleDebt, DebtDirection, ReminderCadence } from '@/db/schema';
 import { DebtRepository } from '@/repositories';
 import { useFinancialStore } from '@/stores';
+import { COMMON_UPI_HANDLES, validateUpiId } from '@/utils/upi';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
 
 const REASON_PRESETS = [
@@ -72,6 +76,9 @@ export function AddEditDebtModal({
   const [amountStr, setAmountStr] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const [upiId, setUpiId] = useState('');
+  const [reminderCadence, setReminderCadence] = useState<ReminderCadence>('none');
+  const [reminderDateStr, setReminderDateStr] = useState('');
 
   // Distinct people from repository for autocomplete
   const existingPeople = useMemo(() => {
@@ -87,18 +94,38 @@ export function AddEditDebtModal({
         setAmountStr(debtToEdit.amount.toString());
         setReason(debtToEdit.reason || '');
         setNote(debtToEdit.note || '');
+        setUpiId(debtToEdit.upi_id || '');
+        setReminderCadence(debtToEdit.reminder_cadence || 'none');
+        setReminderDateStr(debtToEdit.reminder_date || '');
       } else {
         setPersonName('');
         setDirection(presetDirection);
         setAmountStr('');
         setReason('');
         setNote('');
+        setUpiId('');
+        setReminderCadence('none');
+        setReminderDateStr('');
       }
     }
   }, [visible, debtToEdit, presetDirection]);
 
   const amount = parseFloat(amountStr) || 0;
   const isValid = personName.trim().length > 0 && amount > 0;
+  const isUpiValid = useMemo(() => validateUpiId(upiId), [upiId]);
+
+  const handleAppendUpiSuffix = (suffix: string) => {
+    Haptics.selectionAsync();
+    const current = upiId.trim();
+    const atIndex = current.indexOf('@');
+    if (atIndex !== -1) {
+      setUpiId(current.substring(0, atIndex) + suffix);
+    } else if (current.length > 0) {
+      setUpiId(current + suffix);
+    } else {
+      setUpiId(suffix);
+    }
+  };
 
   const handleSave = () => {
     if (!isValid) return;
@@ -107,6 +134,8 @@ export function AddEditDebtModal({
     const trimmedName = personName.trim();
     const trimmedReason = reason.trim() || null;
     const trimmedNote = note.trim() || null;
+    const trimmedUpiId = upiId.trim() || null;
+    const trimmedDate = reminderCadence === 'custom_date' ? reminderDateStr.trim() || null : null;
 
     if (isEdit && debtToEdit) {
       updateDebt(debtToEdit.id, {
@@ -115,6 +144,9 @@ export function AddEditDebtModal({
         amount,
         reason: trimmedReason,
         note: trimmedNote,
+        upi_id: trimmedUpiId,
+        reminder_cadence: reminderCadence,
+        reminder_date: trimmedDate,
       });
     } else {
       createDebt({
@@ -124,7 +156,10 @@ export function AddEditDebtModal({
         amount,
         reason: trimmedReason,
         note: trimmedNote,
+        upi_id: trimmedUpiId,
         is_settled: 0,
+        reminder_cadence: reminderCadence,
+        reminder_date: trimmedDate,
       });
     }
 
@@ -317,6 +352,71 @@ export function AddEditDebtModal({
             </View>
           </View>
 
+          {/* ─── UPI ID / VPA (Phase 17 Quick Pay) ─── */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionLabel}>
+                {direction === 'i_owe' ? 'RECIPIENT UPI ID / VPA (FOR QUICK PAY)' : 'CONTACT UPI ID / VPA (OPTIONAL)'}
+              </Text>
+              {isUpiValid ? (
+                <View style={styles.validUpiBadge}>
+                  <Check size={11} color={Colors.income} />
+                  <Text style={styles.validUpiText}>VALID VPA</Text>
+                </View>
+              ) : upiId.length > 0 ? (
+                <View style={styles.upiHintBadge}>
+                  <Text style={styles.upiHintText}>e.g. name@bank</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <AtSign
+                size={18}
+                color={isUpiValid ? Colors.income : Colors.onSurfaceVariant}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.textInputWithIcon}
+                placeholder="e.g. rahul@okaxis, 9876543210@paytm"
+                placeholderTextColor={Colors.onSurfaceVariant}
+                value={upiId}
+                onChangeText={setUpiId}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Quick Handle Chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.presetChipsRow}
+            >
+              {COMMON_UPI_HANDLES.map((handle) => (
+                <TouchableOpacity
+                  key={handle}
+                  style={[styles.presetChip, upiId.includes(handle) && styles.presetChipActive]}
+                  onPress={() => handleAppendUpiSuffix(handle)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.presetChipText,
+                      upiId.includes(handle) && styles.presetChipTextActive,
+                    ]}
+                  >
+                    {handle}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={styles.fieldHelper}>
+              Enables 1-tap deep linking to Google Pay, PhonePe, Paytm, or CRED to pay this debt.
+            </Text>
+          </View>
+
           {/* ─── Reason & Quick Presets ─── */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>REASON / DESCRIPTION</Text>
@@ -354,6 +454,69 @@ export function AddEditDebtModal({
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+
+          {/* ─── Reminder Cadence (Phase 16) ─── */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionLabel}>REMINDER CADENCE</Text>
+              <Bell size={13} color={Colors.primaryFixed} />
+            </View>
+            <View style={styles.cadenceRow}>
+              {(
+                [
+                  { key: 'none', label: 'Off' },
+                  { key: 'daily', label: 'Daily' },
+                  { key: 'weekly', label: 'Weekly' },
+                  { key: 'custom_date', label: 'Specific Date' },
+                ] as const
+              ).map((opt) => {
+                const isSelected = reminderCadence === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.cadenceChip, isSelected && styles.cadenceChipActive]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setReminderCadence(opt.key);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.cadenceChipText,
+                        isSelected && styles.cadenceChipTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {reminderCadence === 'custom_date' && (
+              <View style={[styles.inputWrapper, { marginTop: 8 }]}>
+                <Calendar size={18} color={Colors.onSurfaceVariant} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInputWithIcon}
+                  placeholder="YYYY-MM-DD (e.g. 2026-09-30)"
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={reminderDateStr}
+                  onChangeText={setReminderDateStr}
+                />
+              </View>
+            )}
+
+            <Text style={styles.fieldHelper}>
+              {reminderCadence === 'none'
+                ? 'No automatic reminders will be sent.'
+                : reminderCadence === 'daily'
+                ? 'Sends a reminder notification every day until settled.'
+                : reminderCadence === 'weekly'
+                ? 'Sends a weekly check-in notification until settled.'
+                : 'Fires an alert on the selected date to follow up on this balance.'}
+            </Text>
           </View>
 
           {/* ─── Optional Notes ─── */}
@@ -616,5 +779,74 @@ const styles = StyleSheet.create({
     color: Colors.expense,
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Cadence (Phase 16)
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  cadenceRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  cadenceChip: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    borderRadius: Shapes.md,
+    backgroundColor: Colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  cadenceChipActive: {
+    backgroundColor: Colors.chartreuseWash,
+    borderColor: Colors.primaryFixed,
+  },
+  cadenceChipText: {
+    ...Typography.bodySmMedium,
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+  },
+  cadenceChipTextActive: {
+    color: Colors.primaryFixed,
+    fontWeight: '700',
+  },
+  fieldHelper: {
+    ...Typography.bodySm,
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  validUpiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Shapes.pill,
+  },
+  validUpiText: {
+    ...Typography.labelCaps,
+    color: Colors.income,
+    fontSize: 8.5,
+    fontWeight: '800',
+  },
+  upiHintBadge: {
+    backgroundColor: Colors.surfaceContainerHigh,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Shapes.pill,
+  },
+  upiHintText: {
+    ...Typography.labelCaps,
+    color: Colors.onSurfaceVariant,
+    fontSize: 8.5,
   },
 });

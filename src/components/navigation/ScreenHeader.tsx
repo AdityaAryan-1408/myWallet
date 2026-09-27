@@ -8,13 +8,16 @@
  * - Profile avatar
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wallet, Calendar, ChevronDown } from 'lucide-react-native';
+import { Wallet, Calendar, ChevronDown, Bell } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Shapes } from '@/theme';
 import { useFinancialStore } from '@/stores';
+import { CreditCard } from '@/db/schema';
+import { NotificationCenterModal } from '@/components/notifications';
+import { PayCardBillModal } from '@/components/cards/PayCardBillModal';
 
 interface ScreenHeaderProps {
   subtitle: string;
@@ -33,8 +36,12 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userName, avatarBadge } = useFinancialStore();
+  const { userName, avatarBadge, unreadNotificationsCount, creditCards } = useFinancialStore();
   const avatarInitial = userName ? userName.trim()[0]?.toUpperCase() || 'A' : 'A';
+
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [selectedCardToPay, setSelectedCardToPay] = useState<CreditCard | null>(null);
+  const [payModalVisible, setPayModalVisible] = useState(false);
 
   const handleAvatarPress = () => {
     if (onAvatarPress) {
@@ -58,7 +65,7 @@ export function ScreenHeader({
           </View>
         </View>
 
-        {/* Right: Month Picker + Avatar */}
+        {/* Right: Month Picker + Notification Bell + Avatar */}
         <View style={styles.rightSection}>
           {showMonthPicker && (
             <TouchableOpacity
@@ -71,6 +78,22 @@ export function ScreenHeader({
               <ChevronDown size={13} color={Colors.onSurfaceVariant} />
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.bellButton}
+            activeOpacity={0.7}
+            onPress={() => setNotificationModalVisible(true)}
+          >
+            <Bell size={16} color={Colors.onSurface} />
+            {unreadNotificationsCount > 0 && (
+              <View style={styles.badgeDot}>
+                {unreadNotificationsCount > 9 ? (
+                  <Text style={styles.badgeText}>9+</Text>
+                ) : null}
+              </View>
+            )}
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.avatarContainer}
             activeOpacity={0.7}
@@ -86,6 +109,42 @@ export function ScreenHeader({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* In-App Notification Center Modal */}
+      <NotificationCenterModal
+        visible={notificationModalVisible}
+        onClose={() => setNotificationModalVisible(false)}
+        onPayCard={(cardId) => {
+          setNotificationModalVisible(false);
+          const targetCard = creditCards.find((c) => c.id === cardId);
+          if (targetCard) {
+            setSelectedCardToPay(targetCard);
+            setPayModalVisible(true);
+          } else {
+            router.push('/cards' as any);
+          }
+        }}
+        onSettleDebt={() => {
+          setNotificationModalVisible(false);
+          router.push('/debts' as any);
+        }}
+      />
+
+      {/* Direct Pay Card Bill Modal trigger */}
+      {selectedCardToPay && (
+        <PayCardBillModal
+          visible={payModalVisible}
+          card={selectedCardToPay}
+          onClose={() => {
+            setPayModalVisible(false);
+            setSelectedCardToPay(null);
+          }}
+          onPaymentSuccess={() => {
+            setPayModalVisible(false);
+            setSelectedCardToPay(null);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -155,6 +214,33 @@ const styles = StyleSheet.create({
     ...Typography.bodySmMedium,
     color: Colors.onSurface,
     fontSize: 12,
+  },
+  bellButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+    position: 'relative',
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 6,
+    fontWeight: '700',
+    color: Colors.onPrimary,
   },
   avatarContainer: {
     width: 34,

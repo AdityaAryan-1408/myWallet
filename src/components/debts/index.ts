@@ -9,3 +9,6 @@ export { RecordRepaymentModal } from './RecordRepaymentModal';
 export type { RecordRepaymentModalProps } from './RecordRepaymentModal';
 
 export { DebtCard } from './DebtCard';
+
+export { QuickUpiPayModal } from './QuickUpiPayModal';
+export type { QuickUpiPayModalProps } from './QuickUpiPayModal';

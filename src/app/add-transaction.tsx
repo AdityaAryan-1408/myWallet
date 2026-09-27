@@ -38,7 +38,7 @@ import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/th
 export default function AddTransactionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ prefillDate?: string }>();
+  const params = useLocalSearchParams<{ prefillDate?: string; type?: string }>();
   const { accounts, creditCards, refreshFinancials } = useFinancialStore();
 
   // Current Today String
@@ -47,8 +47,13 @@ export default function AddTransactionScreen() {
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Transaction Form State
-  const [type, setType] = useState<TransactionType>('expense');
+  // Transaction Form State (Supports deep-link from Android Home Screen Widget)
+  const [type, setType] = useState<TransactionType>(() => {
+    if (params.type === 'income' || params.type === 'transfer') {
+      return params.type;
+    }
+    return 'expense';
+  });
   const [expression, setExpression] = useState<string>('0');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('cat_food');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);

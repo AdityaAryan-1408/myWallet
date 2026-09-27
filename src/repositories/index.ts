@@ -32,7 +32,6 @@ export type {
   ResiliencePillar,
   PaymentMethodSpend,
 } from './analyticsRepository';
-export { SecurityRepository } from './securityRepository';
-export type { AutoLockOption } from './securityRepository';
 export { BackupRepository } from './backupRepository';
 export type { BackupPayload, StorageStats, CloudSyncStatus } from './backupRepository';
+export { NotificationRepository } from './notificationRepository';

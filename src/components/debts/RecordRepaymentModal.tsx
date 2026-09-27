@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -27,10 +28,12 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Sparkles,
+  Zap,
 } from 'lucide-react-native';
 
 import { DebtWithRepayments } from '@/repositories';
 import { useFinancialStore } from '@/stores';
+import { launchUpiPayment } from '@/utils/upi';
 import { Colors, Typography, Spacing, Shapes, FontFamily } from '@/theme';
 
 export interface RecordRepaymentModalProps {
@@ -240,6 +243,31 @@ export function RecordRepaymentModal({
                   This payment will fully settle the balance and mark this debt as complete!
                 </Text>
               </View>
+            )}
+
+            {/* Pay via UPI shortcut for borrowed debts */}
+            {!isTheyOwe && debt.upi_id && enteredAmount > 0 && (
+              <TouchableOpacity
+                style={styles.payUpiShortcutBtn}
+                onPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  const res = await launchUpiPayment({
+                    upiId: debt.upi_id!,
+                    payeeName: debt.person_name,
+                    amount: enteredAmount,
+                    note: note.trim() || 'Debt Repayment',
+                  });
+                  if (!res.success) {
+                    Alert.alert('Unable to Launch UPI', res.error);
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Zap size={14} color="#000" />
+                <Text style={styles.payUpiShortcutText}>
+                  Pay ₹{enteredAmount.toLocaleString('en-IN')} via UPI App ({debt.upi_id})
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -495,5 +523,22 @@ const styles = StyleSheet.create({
     borderColor: Colors.strokeMedium,
     color: Colors.onSurface,
     fontSize: 15,
+  },
+  payUpiShortcutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.chartreuse,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: Shapes.pill,
+    marginTop: 8,
+  },
+  payUpiShortcutText: {
+    ...Typography.labelCaps,
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 11,
   },
 });

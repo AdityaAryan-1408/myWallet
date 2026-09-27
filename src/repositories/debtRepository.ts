@@ -123,8 +123,11 @@ export const DebtRepository = {
     const db = getDatabase();
     const now = new Date().toISOString();
     db.runSync(
-      `INSERT INTO people_debts (id, person_name, amount, direction, reason, note, linked_transaction_id, is_settled, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO people_debts (
+        id, person_name, amount, direction, reason, note, upi_id,
+        linked_transaction_id, is_settled, reminder_cadence,
+        reminder_date, reminder_time, last_reminded_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         debt.id,
         debt.person_name,
@@ -132,8 +135,13 @@ export const DebtRepository = {
         debt.direction,
         debt.reason ?? null,
         debt.note ?? null,
+        debt.upi_id ?? null,
         debt.linked_transaction_id ?? null,
         debt.is_settled ?? 0,
+        debt.reminder_cadence ?? 'none',
+        debt.reminder_date ?? null,
+        debt.reminder_time ?? null,
+        debt.last_reminded_at ?? null,
         now,
       ]
     );
@@ -141,7 +149,7 @@ export const DebtRepository = {
 
   update(
     id: string,
-    fields: Partial<Pick<PeopleDebt, 'person_name' | 'amount' | 'direction' | 'reason' | 'note' | 'is_settled'>>
+    fields: Partial<Pick<PeopleDebt, 'person_name' | 'amount' | 'direction' | 'reason' | 'note' | 'upi_id' | 'is_settled' | 'reminder_cadence' | 'reminder_date' | 'reminder_time' | 'last_reminded_at'>>
   ): void {
     const db = getDatabase();
     const sets: string[] = [];
@@ -152,7 +160,12 @@ export const DebtRepository = {
     if (fields.direction !== undefined) { sets.push('direction = ?'); values.push(fields.direction); }
     if (fields.reason !== undefined) { sets.push('reason = ?'); values.push(fields.reason); }
     if (fields.note !== undefined) { sets.push('note = ?'); values.push(fields.note); }
+    if (fields.upi_id !== undefined) { sets.push('upi_id = ?'); values.push(fields.upi_id); }
     if (fields.is_settled !== undefined) { sets.push('is_settled = ?'); values.push(fields.is_settled); }
+    if (fields.reminder_cadence !== undefined) { sets.push('reminder_cadence = ?'); values.push(fields.reminder_cadence); }
+    if (fields.reminder_date !== undefined) { sets.push('reminder_date = ?'); values.push(fields.reminder_date); }
+    if (fields.reminder_time !== undefined) { sets.push('reminder_time = ?'); values.push(fields.reminder_time); }
+    if (fields.last_reminded_at !== undefined) { sets.push('last_reminded_at = ?'); values.push(fields.last_reminded_at); }
 
     if (sets.length === 0) return;
     values.push(id);

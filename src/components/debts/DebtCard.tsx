@@ -24,6 +24,8 @@ import {
   CreditCard,
   Edit2,
   Trash2,
+  Zap,
+  AtSign,
 } from 'lucide-react-native';
 
 import { DebtWithRepayments } from '@/repositories';
@@ -35,6 +37,7 @@ interface DebtCardProps {
   onRecordRepayment: (debt: DebtWithRepayments) => void;
   onSettle: (debtId: string) => void;
   onUnsettle: (debtId: string) => void;
+  onQuickPayUpi?: (debt: DebtWithRepayments) => void;
 }
 
 // Deterministic pastel color for avatars based on person name
@@ -65,6 +68,7 @@ export function DebtCard({
   onRecordRepayment,
   onSettle,
   onUnsettle,
+  onQuickPayUpi,
 }: DebtCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -128,6 +132,15 @@ export function DebtCard({
                 {debt.reason}
               </Text>
             ) : null}
+
+            {debt.upi_id ? (
+              <View style={styles.upiChip}>
+                <AtSign size={10} color={Colors.chartreuse} />
+                <Text style={styles.upiChipText} numberOfLines={1}>
+                  {debt.upi_id}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -174,16 +187,33 @@ export function DebtCard({
       <View style={styles.actionsRow}>
         {!isSettled ? (
           <>
+            {/* Pay via UPI Quick Pay for borrowed debts */}
+            {!isTheyOwe && onQuickPayUpi && (
+              <TouchableOpacity
+                style={styles.upiBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onQuickPayUpi(debt);
+                }}
+                activeOpacity={0.75}
+              >
+                <Zap size={12} color="#000" />
+                <Text style={styles.upiBtnText}>Pay via UPI</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={styles.repayBtn}
+              style={!isTheyOwe ? styles.repayBtnSecondary : styles.repayBtn}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onRecordRepayment(debt);
               }}
               activeOpacity={0.75}
             >
-              <Plus size={13} color="#000" />
-              <Text style={styles.repayBtnText}>Record Repayment</Text>
+              <Plus size={13} color={!isTheyOwe ? Colors.onSurface : '#000'} />
+              <Text style={!isTheyOwe ? styles.repayBtnSecondaryText : styles.repayBtnText}>
+                {!isTheyOwe ? 'Record' : 'Record Repayment'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -398,6 +428,53 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: '700',
     fontSize: 10,
+  },
+  upiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.chartreuse,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: Shapes.pill,
+  },
+  upiBtnText: {
+    ...Typography.labelCaps,
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 10,
+  },
+  repayBtnSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.surfaceContainerHigh,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  repayBtnSecondaryText: {
+    ...Typography.labelCaps,
+    color: Colors.onSurface,
+    fontWeight: '700',
+    fontSize: 9.5,
+  },
+  upiChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(200, 243, 34, 0.10)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Shapes.pill,
+    alignSelf: 'flex-start',
+  },
+  upiChipText: {
+    fontFamily: FontFamily.numeric,
+    fontSize: 10,
+    color: Colors.chartreuse,
   },
   settleBtn: {
     flexDirection: 'row',

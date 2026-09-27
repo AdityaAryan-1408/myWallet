@@ -83,6 +83,7 @@ export interface Reservation {
 }
 
 export type DebtDirection = 'i_owe' | 'they_owe';
+export type ReminderCadence = 'none' | 'daily' | 'weekly' | 'custom_date';
 
 export interface PeopleDebt {
   id: string;
@@ -91,8 +92,36 @@ export interface PeopleDebt {
   direction: DebtDirection;
   reason?: string | null;
   note?: string | null;
+  upi_id?: string | null;
   linked_transaction_id?: string | null;
   is_settled: number; // 0 or 1
+  reminder_cadence?: ReminderCadence;
+  reminder_date?: string | null;
+  reminder_time?: string | null;
+  last_reminded_at?: string | null;
+  created_at: string;
+}
+
+export type NotificationType =
+  | 'debt_reminder'
+  | 'cc_statement'
+  | 'cc_due_soon'
+  | 'cc_overdue'
+  | 'cc_daily_reminder'
+  | 'system';
+
+export interface InAppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  entity_type?: 'debt' | 'credit_card' | 'system' | null;
+  entity_id?: string | null;
+  is_read: number;       // 0 or 1
+  is_dismissed: number;  // 0 or 1
+  action_type?: 'pay_card' | 'settle_debt' | 'view_screen' | 'none' | null;
+  action_payload?: string | null;
+  scheduled_for?: string | null;
   created_at: string;
 }
 
@@ -219,8 +248,30 @@ CREATE TABLE IF NOT EXISTS people_debts (
   direction TEXT NOT NULL CHECK(direction IN ('i_owe', 'they_owe')),
   reason TEXT,
   note TEXT,
+  upi_id TEXT,
   linked_transaction_id TEXT REFERENCES transactions(id) ON DELETE SET NULL,
   is_settled INTEGER NOT NULL DEFAULT 0,
+  reminder_cadence TEXT DEFAULT 'none',
+  reminder_date TEXT,
+  reminder_time TEXT,
+  last_reminded_at TEXT,
+  created_at TEXT NOT NULL
+);
+`;
+
+export const CREATE_IN_APP_NOTIFICATIONS_TABLE = `
+CREATE TABLE IF NOT EXISTS in_app_notifications (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  is_dismissed INTEGER NOT NULL DEFAULT 0,
+  action_type TEXT,
+  action_payload TEXT,
+  scheduled_for TEXT,
   created_at TEXT NOT NULL
 );
 `;
@@ -275,4 +326,5 @@ CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_people_debts_settled ON people_debts(is_settled);
 CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id);
 CREATE INDEX IF NOT EXISTS idx_debt_repayments_debt ON debt_repayments(debt_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON in_app_notifications(is_read, is_dismissed);
 `;

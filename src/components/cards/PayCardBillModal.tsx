@@ -33,6 +33,7 @@ import {
 import { CreditCard } from '@/db/schema';
 import { CreditCardRepository } from '@/repositories';
 import { calculateCardCycle, calculateCreditCardLifecycle } from '@/domain/financialCalculations';
+import { NotificationService } from '@/services';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
@@ -148,6 +149,7 @@ export function PayCardBillModal({
       `Bill Payment for ${card.name}`
     );
 
+    NotificationService.onCardBillPaid(card.id).catch(() => {});
     refreshFinancials();
     onPaymentSuccess?.();
     onClose();

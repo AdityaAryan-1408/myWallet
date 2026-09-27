@@ -88,6 +88,38 @@ export const SettingsRepository = {
     this.set('haptics_enabled', enabled ? '1' : '0');
   },
 
+  getNotificationsEnabled(): boolean {
+    return this.get('notifications_enabled', '1') === '1';
+  },
+
+  setNotificationsEnabled(enabled: boolean): void {
+    this.set('notifications_enabled', enabled ? '1' : '0');
+  },
+
+  getDebtRemindersEnabled(): boolean {
+    return this.get('debt_reminders_enabled', '1') === '1';
+  },
+
+  setDebtRemindersEnabled(enabled: boolean): void {
+    this.set('debt_reminders_enabled', enabled ? '1' : '0');
+  },
+
+  getCardRemindersEnabled(): boolean {
+    return this.get('card_reminders_enabled', '1') === '1';
+  },
+
+  setCardRemindersEnabled(enabled: boolean): void {
+    this.set('card_reminders_enabled', enabled ? '1' : '0');
+  },
+
+  getPreferredReminderTime(): string {
+    return this.get('preferred_reminder_time', '09:00');
+  },
+
+  setPreferredReminderTime(time: string): void {
+    this.set('preferred_reminder_time', time || '09:00');
+  },
+
   get(key: string, defaultValue: string = ''): string {
     try {
       const db = getDatabase();

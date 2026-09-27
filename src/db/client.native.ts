@@ -16,6 +16,7 @@ import {
   CREATE_DASHBOARD_NOTES_TABLE,
   CREATE_USER_SETTINGS_TABLE,
   CREATE_BUDGETS_TABLE,
+  CREATE_IN_APP_NOTIFICATIONS_TABLE,
   CREATE_INDEXES,
 } from './schema';
 import { SEED_DATA } from './seed';
@@ -64,6 +65,7 @@ export function initDatabase(): void {
     db.execSync(CREATE_DASHBOARD_NOTES_TABLE);
     db.execSync(CREATE_USER_SETTINGS_TABLE);
     db.execSync(CREATE_BUDGETS_TABLE);
+    db.execSync(CREATE_IN_APP_NOTIFICATIONS_TABLE);
     db.execSync(CREATE_INDEXES);
 
     // Migration: ensure exclude_from_total column exists on accounts
@@ -76,6 +78,34 @@ export function initDatabase(): void {
     // Migration: ensure payment_due_day column exists on credit_cards
     try {
       db.execSync('ALTER TABLE credit_cards ADD COLUMN payment_due_day INTEGER;');
+    } catch {
+      // Column already exists
+    }
+
+    // Migration: ensure reminder columns exist on people_debts
+    try {
+      db.execSync("ALTER TABLE people_debts ADD COLUMN reminder_cadence TEXT DEFAULT 'none';");
+    } catch {
+      // Column already exists
+    }
+    try {
+      db.execSync('ALTER TABLE people_debts ADD COLUMN reminder_date TEXT;');
+    } catch {
+      // Column already exists
+    }
+    try {
+      db.execSync('ALTER TABLE people_debts ADD COLUMN reminder_time TEXT;');
+    } catch {
+      // Column already exists
+    }
+    try {
+      db.execSync('ALTER TABLE people_debts ADD COLUMN last_reminded_at TEXT;');
+    } catch {
+      // Column already exists
+    }
+    // Migration: ensure upi_id column exists on people_debts (Phase 17)
+    try {
+      db.execSync('ALTER TABLE people_debts ADD COLUMN upi_id TEXT;');
     } catch {
       // Column already exists
     }

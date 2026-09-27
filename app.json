@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyWallet",
     "slug": "MyWallet",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mywallet",
@@ -24,6 +24,11 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#101319"
+    },
     "plugins": [
       "expo-router",
       [
@@ -31,11 +36,20 @@
         {
           "backgroundColor": "#101319",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 180
         }
       ],
       "expo-sqlite",
-      "expo-audio"
+      "expo-audio",
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#D4FF32",
+          "defaultChannel": "channel_general"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

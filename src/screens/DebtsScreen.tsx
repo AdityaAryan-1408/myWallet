@@ -36,7 +36,7 @@ import {
 import { PeopleDebt, DebtDirection } from '@/db/schema';
 import { DebtWithRepayments } from '@/repositories';
 import { useFinancialStore } from '@/stores';
-import { AddEditDebtModal, RecordRepaymentModal, DebtCard } from '@/components/debts';
+import { AddEditDebtModal, RecordRepaymentModal, DebtCard, QuickUpiPayModal } from '@/components/debts';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
 type DebtFilter = 'all_pending' | 'they_owe' | 'i_owe' | 'settled';
@@ -64,6 +64,9 @@ export default function DebtsScreen() {
 
   const [repayModalVisible, setRepayModalVisible] = useState(false);
   const [debtForRepayment, setDebtForRepayment] = useState<DebtWithRepayments | null>(null);
+
+  const [quickPayModalVisible, setQuickPayModalVisible] = useState(false);
+  const [debtForQuickPay, setDebtForQuickPay] = useState<DebtWithRepayments | null>(null);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -109,6 +112,12 @@ export default function DebtsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setDebtForRepayment(debt);
     setRepayModalVisible(true);
+  };
+
+  const handleOpenQuickPay = (debt: DebtWithRepayments) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDebtForQuickPay(debt);
+    setQuickPayModalVisible(true);
   };
 
   return (
@@ -352,6 +361,7 @@ export default function DebtsScreen() {
                   onRecordRepayment={handleOpenRepayment}
                   onSettle={settleDebt}
                   onUnsettle={unsettleDebt}
+                  onQuickPayUpi={handleOpenQuickPay}
                 />
               </Animated.View>
             ))
@@ -389,6 +399,17 @@ export default function DebtsScreen() {
         onClose={() => setRepayModalVisible(false)}
         onSuccess={() => {
           setRepayModalVisible(false);
+          refreshDebts();
+          refreshFinancials();
+        }}
+      />
+
+      <QuickUpiPayModal
+        visible={quickPayModalVisible}
+        debt={debtForQuickPay}
+        onClose={() => setQuickPayModalVisible(false)}
+        onPaymentSuccess={() => {
+          setQuickPayModalVisible(false);
           refreshDebts();
           refreshFinancials();
         }}

@@ -34,9 +34,6 @@ import {
   Calendar,
   Sparkles,
   ShieldCheck,
-  Lock,
-  Key,
-  Fingerprint,
   Database,
   Cloud,
   Trash2,
@@ -46,25 +43,25 @@ import {
   Vibrate,
   Activity,
   RotateCcw,
+  Bell,
+  BellRing,
 } from 'lucide-react-native';
 
 import {
   SettingsRepository,
-  SecurityRepository,
   BackupRepository,
-  AutoLockOption,
 } from '@/repositories';
+import { NotificationService } from '@/services';
+import { WidgetPreviewCard } from '@/components/widget';
 import { useFinancialStore } from '@/stores';
 import {
   ProfileEditorModal,
-  PinSetupModal,
   BackupExportModal,
   ResetConfirmModal,
-  SecurityLockModal,
 } from '@/components/settings';
 import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation } from '@/theme';
 
-type SettingsTab = 'preferences' | 'profile' | 'security' | 'backup';
+type SettingsTab = 'preferences' | 'profile' | 'backup';
 
 const CURRENCY_OPTIONS = [
   { code: 'INR', symbol: '₹', label: 'INR (₹)' },
@@ -74,13 +71,6 @@ const CURRENCY_OPTIONS = [
 ];
 
 const CYCLE_DAYS = [1, 5, 10, 15, 20, 25];
-
-const AUTO_LOCK_OPTIONS: Array<{ key: AutoLockOption; label: string }> = [
-  { key: 'immediately', label: 'Immediately' },
-  { key: '1_min', label: '1 min' },
-  { key: '5_min', label: '5 min' },
-  { key: '15_min', label: '15 min' },
-];
 
 export function SettingsScreen() {
   const router = useRouter();
@@ -102,7 +92,6 @@ export function SettingsScreen() {
   // Active section tab
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     if (params.section === 'profile') return 'profile';
-    if (params.section === 'security') return 'security';
     if (params.section === 'backup' || params.section === 'data') return 'backup';
     return 'preferences';
   });
@@ -110,7 +99,6 @@ export function SettingsScreen() {
   // Sync section param changes
   useEffect(() => {
     if (params.section === 'profile') setActiveTab('profile');
-    else if (params.section === 'security') setActiveTab('security');
     else if (params.section === 'backup' || params.section === 'data') setActiveTab('backup');
     else if (params.section === 'preferences') setActiveTab('preferences');
   }, [params.section]);
@@ -123,24 +111,25 @@ export function SettingsScreen() {
     SettingsRepository.getHapticsEnabled()
   );
 
-  // Security state
-  const [appLockActive, setAppLockActive] = useState<boolean>(() =>
-    SecurityRepository.isAppLockEnabled()
+  // Notification state (Phase 16)
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() =>
+    SettingsRepository.getNotificationsEnabled()
   );
-  const [hasPin, setHasPin] = useState<boolean>(() => SecurityRepository.hasPin());
-  const [biometricsActive, setBiometricsActive] = useState<boolean>(() =>
-    SecurityRepository.isBiometricsEnabled()
+  const [debtRemindersEnabled, setDebtRemindersEnabled] = useState<boolean>(() =>
+    SettingsRepository.getDebtRemindersEnabled()
   );
-  const [autoLockTimeout, setAutoLockTimeout] = useState<AutoLockOption>(() =>
-    SecurityRepository.getAutoLockTimeout()
+  const [cardRemindersEnabled, setCardRemindersEnabled] = useState<boolean>(() =>
+    SettingsRepository.getCardRemindersEnabled()
+  );
+  const [reminderTime, setReminderTime] = useState<string>(() =>
+    SettingsRepository.getPreferredReminderTime()
   );
 
   // Modals state
   const [profileModalVisible, setProfileModalVisible] = useState(false);
-  const [pinModalVisible, setPinModalVisible] = useState(false);
   const [backupModalVisible, setBackupModalVisible] = useState(false);
   const [resetModalVisible, setResetModalVisible] = useState(false);
-  const [testLockVisible, setTestLockVisible] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Storage stats for Data tab
   const storageStats = useMemo(() => BackupRepository.getStorageStats(), [backupModalVisible, resetModalVisible]);
@@ -201,37 +190,61 @@ export function SettingsScreen() {
     if (val) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  // Security Handlers
-  const handleToggleAppLock = (val: boolean) => {
+  const handleToggleNotifications = async (val: boolean) => {
+    Haptics.selectionAsync();
+    setNotificationsEnabled(val);
+    SettingsRepository.setNotificationsEnabled(val);
+    if (val) {
+      await NotificationService.initialize();
+      await NotificationService.syncAllReminders();
+    } else {
+      await NotificationService.cancelAll();
+    }
+  };
+
+  const handleToggleDebtReminders = (val: boolean) => {
+    Haptics.selectionAsync();
+    setDebtRemindersEnabled(val);
+    SettingsRepository.setDebtRemindersEnabled(val);
+    NotificationService.syncAllReminders().catch(() => {});
+  };
+
+  const handleToggleCardReminders = (val: boolean) => {
+    Haptics.selectionAsync();
+    setCardRemindersEnabled(val);
+    SettingsRepository.setCardRemindersEnabled(val);
+    NotificationService.syncAllReminders().catch(() => {});
+  };
+
+  const handleSelectReminderTime = async (time: string) => {
+    Haptics.selectionAsync();
+    setReminderTime(time);
+    SettingsRepository.setPreferredReminderTime(time);
+    await NotificationService.cancelAll();
+    NotificationService.syncAllReminders().catch(() => {});
+  };
+
+  const handleSendTestNotification = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (val && !hasPin) {
-      setPinModalVisible(true);
-      return;
-    }
+    setIsSendingTest(true);
     try {
-      SecurityRepository.setAppLockEnabled(val);
-      setAppLockActive(val);
+      const success = await NotificationService.sendTestNotification();
+      if (success) {
+        Alert.alert(
+          'Notification Sent! ⚡',
+          'Check your status bar and lock screen for the MyWallet alert.'
+        );
+      } else {
+        Alert.alert(
+          'Permission Required',
+          'Could not send notification. Please enable notifications for MyWallet in your phone settings.'
+        );
+      }
     } catch {
-      setPinModalVisible(true);
+      Alert.alert('Error', 'Failed to send test notification.');
+    } finally {
+      setIsSendingTest(false);
     }
-  };
-
-  const handleToggleBiometrics = (val: boolean) => {
-    Haptics.selectionAsync();
-    SecurityRepository.setBiometricsEnabled(val);
-    setBiometricsActive(val);
-  };
-
-  const handleSelectAutoLock = (timeout: AutoLockOption) => {
-    Haptics.selectionAsync();
-    setAutoLockTimeout(timeout);
-    SecurityRepository.setAutoLockTimeout(timeout);
-  };
-
-  const handlePinConfigSuccess = () => {
-    const pinExists = SecurityRepository.hasPin();
-    setHasPin(pinExists);
-    setAppLockActive(SecurityRepository.isAppLockEnabled());
   };
 
   return (
@@ -250,17 +263,16 @@ export function SettingsScreen() {
         </TouchableOpacity>
         <View style={styles.topBarTitles}>
           <Text style={styles.topBarTitle}>Settings & Preferences</Text>
-          <Text style={styles.topBarSub}>Ledger config, profile & security</Text>
+          <Text style={styles.topBarSub}>Ledger config, profile & data</Text>
         </View>
       </View>
 
-      {/* ─── 4-Segmented Section Tabs ─── */}
+      {/* ─── 3-Segmented Section Tabs ─── */}
       <View style={styles.tabsRow}>
         {(
           [
             { id: 'preferences', label: 'PREFERENCES' },
             { id: 'profile', label: 'PROFILE' },
-            { id: 'security', label: 'SECURITY' },
             { id: 'backup', label: 'DATA & CLOUD' },
           ] as Array<{ id: SettingsTab; label: string }>
         ).map((tab) => {
@@ -441,6 +453,103 @@ export function SettingsScreen() {
                 />
               </View>
             </View>
+
+            {/* Notifications & Reminders (Phase 16) */}
+            <View style={styles.sectionCard}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchMeta}>
+                  <View style={styles.cardHeader}>
+                    <Bell size={16} color={Colors.primaryFixed} />
+                    <Text style={styles.cardHeaderTitle}>LOCAL NOTIFICATIONS & ALERTS</Text>
+                  </View>
+                  <Text style={styles.cardDesc}>
+                    100% offline, privacy-safe reminders for dues and credit schedules.
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={handleToggleNotifications}
+                  trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
+                  thumbColor={notificationsEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
+                />
+              </View>
+
+              {notificationsEnabled && (
+                <View style={{ marginTop: 12, gap: 12 }}>
+                  {/* Debt Reminders Toggle */}
+                  <View style={styles.subSwitchRow}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.subSwitchTitle}>People & Debts Reminders</Text>
+                      <Text style={styles.subSwitchDesc}>Alerts to collect from or return money to contacts</Text>
+                    </View>
+                    <Switch
+                      value={debtRemindersEnabled}
+                      onValueChange={handleToggleDebtReminders}
+                      trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
+                      thumbColor={debtRemindersEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
+                    />
+                  </View>
+
+                  {/* Credit Card Dues Toggle */}
+                  <View style={styles.subSwitchRow}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.subSwitchTitle}>Credit Card Payment Alerts</Text>
+                      <Text style={styles.subSwitchDesc}>Statement generation, grace period & due date urgency</Text>
+                    </View>
+                    <Switch
+                      value={cardRemindersEnabled}
+                      onValueChange={handleToggleCardReminders}
+                      trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
+                      thumbColor={cardRemindersEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
+                    />
+                  </View>
+
+                  {/* Preferred Reminder Time */}
+                  <View style={{ marginTop: 4 }}>
+                    <Text style={[styles.cardHeaderTitle, { fontSize: 10, marginBottom: 8 }]}>PREFERRED REMINDER TIME</Text>
+                    <View style={styles.timeChipsRow}>
+                      {[
+                        { time: '08:00', label: '8:00 AM' },
+                        { time: '09:00', label: '9:00 AM' },
+                        { time: '12:00', label: '12:00 PM' },
+                        { time: '18:00', label: '6:00 PM' },
+                        { time: '20:00', label: '8:00 PM' },
+                      ].map((item) => {
+                        const isSelected = reminderTime === item.time;
+                        return (
+                          <TouchableOpacity
+                            key={item.time}
+                            style={[styles.timeChip, isSelected && styles.timeChipActive]}
+                            onPress={() => handleSelectReminderTime(item.time)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.timeChipText, isSelected && styles.timeChipTextActive]}>
+                              {item.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Immediate Test Notification Button */}
+                  <TouchableOpacity
+                    style={styles.testNotificationBtn}
+                    onPress={handleSendTestNotification}
+                    disabled={isSendingTest}
+                    activeOpacity={0.7}
+                  >
+                    <BellRing size={16} color={Colors.primaryFixed} />
+                    <Text style={styles.testNotificationBtnText}>
+                      {isSendingTest ? 'Firing Notification...' : 'Send Test Notification Now'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Android Home Screen Widget (Phase 18) */}
+            <WidgetPreviewCard />
           </Animated.View>
         )}
 
@@ -514,126 +623,7 @@ export function SettingsScreen() {
           </Animated.View>
         )}
 
-        {/* ═════════ SECTION 3: SECURITY ═════════ */}
-        {activeTab === 'security' && (
-          <Animated.View entering={FadeInDown.duration(400)}>
-            {/* App Lock Switch Card */}
-            <View style={styles.sectionCard}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchMeta}>
-                  <View style={styles.cardHeader}>
-                    <Lock size={16} color={Colors.primaryFixed} />
-                    <Text style={styles.cardHeaderTitle}>APP PASSCODE LOCK</Text>
-                  </View>
-                  <Text style={styles.cardDesc}>
-                    {hasPin
-                      ? '4-digit security PIN protection active'
-                      : 'Set a 4-digit PIN to secure application'}
-                  </Text>
-                </View>
-                <Switch
-                  value={appLockActive}
-                  onValueChange={handleToggleAppLock}
-                  trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
-                  thumbColor={appLockActive ? Colors.primaryFixed : Colors.onSurfaceVariant}
-                />
-              </View>
-
-              {/* PIN Configuration Button */}
-              <TouchableOpacity
-                style={styles.pinConfigRow}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setPinModalVisible(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.pinConfigLeft}>
-                  <Key size={16} color={Colors.onSurfaceVariant} />
-                  <Text style={styles.pinConfigText}>
-                    {hasPin ? 'Change 4-Digit Passcode' : 'Create 4-Digit Passcode'}
-                  </Text>
-                </View>
-                <ChevronRight size={16} color={Colors.onSurfaceVariant} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Biometrics Toggle */}
-            <View style={styles.sectionCard}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchMeta}>
-                  <View style={styles.cardHeader}>
-                    <Fingerprint size={16} color={Colors.chartreuse} />
-                    <Text style={styles.cardHeaderTitle}>BIOMETRIC UNLOCK</Text>
-                  </View>
-                  <Text style={styles.cardDesc}>
-                    Use Face ID or fingerprint sensor for rapid unlocking.
-                  </Text>
-                </View>
-                <Switch
-                  value={biometricsActive}
-                  onValueChange={handleToggleBiometrics}
-                  trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
-                  thumbColor={biometricsActive ? Colors.primaryFixed : Colors.onSurfaceVariant}
-                />
-              </View>
-            </View>
-
-            {/* Auto-Lock Timeout */}
-            <View style={styles.sectionCard}>
-              <View style={styles.cardHeader}>
-                <Calendar size={16} color={Colors.secondaryFixed} />
-                <Text style={styles.cardHeaderTitle}>AUTO-LOCK TIMEOUT</Text>
-              </View>
-              <Text style={styles.cardDesc}>
-                Trigger lock screen when application is backgrounded.
-              </Text>
-
-              <View style={styles.autoLockRow}>
-                {AUTO_LOCK_OPTIONS.map((opt) => {
-                  const isSelected = autoLockTimeout === opt.key;
-                  return (
-                    <TouchableOpacity
-                      key={opt.key}
-                      style={[
-                        styles.autoLockPill,
-                        isSelected && styles.autoLockPillActive,
-                      ]}
-                      onPress={() => handleSelectAutoLock(opt.key)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.autoLockText,
-                          isSelected && styles.autoLockTextActive,
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Test Lock Button */}
-            {hasPin && (
-              <TouchableOpacity
-                style={styles.testLockBtn}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setTestLockVisible(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Lock size={16} color={Colors.surface} />
-                <Text style={styles.testLockBtnText}>Test Lock Screen</Text>
-              </TouchableOpacity>
-            )}
-          </Animated.View>
-        )}
-
-        {/* ═════════ SECTION 4: DATA & CLOUD ═════════ */}
+        {/* ═════════ SECTION 3: DATA & CLOUD ═════════ */}
         {activeTab === 'backup' && (
           <Animated.View entering={FadeInDown.duration(400)}>
             {/* Storage Stats Banner */}
@@ -745,12 +735,6 @@ export function SettingsScreen() {
         onClose={() => setProfileModalVisible(false)}
       />
 
-      <PinSetupModal
-        visible={pinModalVisible}
-        onClose={() => setPinModalVisible(false)}
-        onSuccess={handlePinConfigSuccess}
-      />
-
       <BackupExportModal
         visible={backupModalVisible}
         onClose={() => setBackupModalVisible(false)}
@@ -759,11 +743,6 @@ export function SettingsScreen() {
       <ResetConfirmModal
         visible={resetModalVisible}
         onClose={() => setResetModalVisible(false)}
-      />
-
-      <SecurityLockModal
-        visible={testLockVisible}
-        onUnlock={() => setTestLockVisible(false)}
       />
     </View>
   );
@@ -1051,68 +1030,6 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     lineHeight: 18,
   },
-  pinConfigRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surfaceContainerHigh,
-    padding: 12,
-    borderRadius: Shapes.lg,
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
-  },
-  pinConfigLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pinConfigText: {
-    ...Typography.bodySmMedium,
-    color: Colors.onSurface,
-  },
-  autoLockRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  autoLockPill: {
-    flex: 1,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Shapes.md,
-    backgroundColor: Colors.surfaceContainerHigh,
-    borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
-  },
-  autoLockPillActive: {
-    backgroundColor: Colors.primaryFixed,
-    borderColor: Colors.primaryFixed,
-  },
-  autoLockText: {
-    ...Typography.bodySmMedium,
-    fontSize: 11,
-    color: Colors.onSurface,
-  },
-  autoLockTextActive: {
-    color: Colors.surface,
-    fontWeight: '700',
-  },
-  testLockBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 48,
-    backgroundColor: Colors.primaryFixed,
-    borderRadius: Shapes.lg,
-    marginTop: Spacing.sm,
-  },
-  testLockBtnText: {
-    ...Typography.bodyMdMedium,
-    fontWeight: '700',
-    color: Colors.surface,
-  },
   storageGrid: {
     flexDirection: 'row',
     backgroundColor: Colors.surfaceContainerHigh,
@@ -1189,5 +1106,73 @@ const styles = StyleSheet.create({
     ...Typography.bodySmMedium,
     fontWeight: '700',
     color: Colors.error,
+  },
+
+  // Notification Styles (Phase 16)
+  subSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.strokeSubtle,
+    paddingTop: 8,
+  },
+  subSwitchTitle: {
+    ...Typography.bodySmMedium,
+    color: Colors.onSurface,
+    fontSize: 13,
+  },
+  subSwitchDesc: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  timeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  timeChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  timeChipActive: {
+    backgroundColor: Colors.chartreuseWash,
+    borderColor: Colors.primaryFixed,
+  },
+  timeChipText: {
+    ...Typography.bodySm,
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+  },
+  timeChipTextActive: {
+    color: Colors.primaryFixed,
+    fontWeight: '700',
+  },
+  testNotificationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: Shapes.md,
+    backgroundColor: Colors.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 255, 50, 0.35)',
+  },
+  testNotificationBtnText: {
+    ...Typography.bodySmMedium,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primaryFixed,
+    letterSpacing: 0.5,
   },
 });
