@@ -8,3 +8,7 @@ export { VelocityAuditCard } from './VelocityAuditCard';
 export { DayOfWeekChart } from './DayOfWeekChart';
 export { TimeDistributionBar } from './TimeDistributionBar';
 export { MonthComparisonCard } from './MonthComparisonCard';
+export { FactorDetailSheet } from './FactorDetailSheet';
+export { FinancialWrappedModal } from './FinancialWrappedModal';
+export { MerchantIntelligenceCard } from './MerchantIntelligenceCard';
+export { MonthlyDigestCard } from './MonthlyDigestCard';

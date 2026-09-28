@@ -24,6 +24,46 @@ export interface MerchantRule {
   generalTip: string;
 }
 
+export interface PriceDeviationAlert {
+  latestAmount: number;
+  typicalAmount: number;
+  minAmount: number;
+  maxAmount: number;
+  percentDiff: number;
+  message: string;
+  isHigher: boolean;
+}
+
+export interface MerchantIntelligenceItem {
+  name: string;
+  brand?: string;
+  categoryId: string | null;
+  categoryName: string;
+  categoryColor: string;
+  categoryIcon: string;
+  transactionCount: number;
+  totalSpend: number;
+  averageSpend: number;
+  medianSpend: number;
+  minSpend: number;
+  maxSpend: number;
+  visitsPerWeek: number;
+  lastVisitDate: string | null;
+  trend: 'increasing' | 'stable' | 'decreasing';
+  deviationAlert?: PriceDeviationAlert | null;
+  rewardTip?: string | null;
+  recommendedCard?: string | null;
+}
+
+export interface MerchantIntelligenceReport {
+  merchants: MerchantIntelligenceItem[];
+  totalTrackedMerchants: number;
+  totalSpendOnMerchants: number;
+  topMerchantBySpend: MerchantIntelligenceItem | null;
+  mostFrequentMerchant: MerchantIntelligenceItem | null;
+  deviationAlerts: MerchantIntelligenceItem[];
+}
+
 export interface MerchantSummary {
   name: string;
   category_id: string | null;
@@ -300,6 +340,229 @@ export const MerchantRepository = {
     list.sort((a, b) => b.total_spend - a.total_spend || b.transaction_count - a.transaction_count);
 
     return list.slice(0, limit);
+  },
+
+  /**
+   * Comprehensive Merchant Intelligence & Price Memory Engine:
+   * - Spend Leaderboard & visit frequency map
+   * - Price deviation detection (compares latest spend to historical average/median)
+   * - Credit card reward perk matching
+   */
+  getMerchantIntelligence(limit: number = 20): MerchantIntelligenceReport {
+    const db = getDatabase();
+    const cards = CreditCardRepository.getAllActive();
+
+    interface RawTxRow {
+      id: string;
+      amount: number;
+      date: string;
+      note: string;
+      category_id: string | null;
+      cat_name: string | null;
+      cat_color: string | null;
+      cat_icon: string | null;
+    }
+
+    const rows = db.getAllSync<RawTxRow>(`
+      SELECT 
+        t.id,
+        t.amount,
+        t.date,
+        t.note,
+        t.category_id,
+        c.name as cat_name,
+        c.color as cat_color,
+        c.icon as cat_icon
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.note IS NOT NULL AND TRIM(t.note) != '' AND t.type = 'expense'
+      ORDER BY t.date DESC, t.time DESC;
+    `);
+
+    // Group transactions by recognized brand or raw note
+    interface GroupData {
+      name: string;
+      brand?: string;
+      categoryId: string | null;
+      categoryName: string;
+      categoryColor: string;
+      categoryIcon: string;
+      amounts: number[];
+      dates: string[];
+    }
+
+    const groupMap = new Map<string, GroupData>();
+
+    rows.forEach((r) => {
+      const cleanNote = r.note.trim();
+      const rule = this.findMerchantRule(cleanNote);
+      const brandKey = rule ? rule.brand : cleanNote;
+
+      const existing = groupMap.get(brandKey);
+      if (existing) {
+        existing.amounts.push(r.amount);
+        existing.dates.push(r.date);
+      } else {
+        groupMap.set(brandKey, {
+          name: brandKey,
+          brand: rule ? rule.brand : undefined,
+          categoryId: r.category_id || rule?.defaultCategoryId || null,
+          categoryName: r.cat_name || (rule?.defaultCategoryId === 'cat_food' ? 'Food & Dining' : 'Shopping'),
+          categoryColor: r.cat_color || '#00F0FF',
+          categoryIcon: r.cat_icon || 'ShoppingBag',
+          amounts: [r.amount],
+          dates: [r.date],
+        });
+      }
+    });
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+
+    const merchants: MerchantIntelligenceItem[] = [];
+
+    groupMap.forEach((g) => {
+      const count = g.amounts.length;
+      const totalSpend = g.amounts.reduce((sum, a) => sum + a, 0);
+      const averageSpend = Math.round(totalSpend / count);
+
+      // Median spend
+      const sorted = [...g.amounts].sort((a, b) => a - b);
+      const medianSpend = Math.round(
+        count % 2 === 0
+          ? (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+          : sorted[Math.floor(count / 2)]
+      );
+      const minSpend = sorted[0];
+      const maxSpend = sorted[sorted.length - 1];
+
+      // Frequency (Visits per week over last 30 days or active span)
+      let recentVisits = 0;
+      let prevVisits = 0;
+      let recentSpend = 0;
+      let prevSpend = 0;
+
+      g.dates.forEach((d, idx) => {
+        const amt = g.amounts[idx];
+        if (d >= thirtyDaysAgoStr) {
+          recentVisits++;
+          recentSpend += amt;
+        } else if (d >= sixtyDaysAgoStr) {
+          prevVisits++;
+          prevSpend += amt;
+        }
+      });
+
+      const visitsPerWeek = recentVisits > 0
+        ? Number((recentVisits / 4.2).toFixed(1))
+        : count > 0
+        ? Number(Math.min(1.0, count / 4).toFixed(1))
+        : 0;
+
+      let trend: 'increasing' | 'stable' | 'decreasing' = 'stable';
+      if (recentSpend > prevSpend * 1.15 && prevSpend > 0) {
+        trend = 'increasing';
+      } else if (recentSpend < prevSpend * 0.85 && prevSpend > 0) {
+        trend = 'decreasing';
+      }
+
+      // Price Deviation Check:
+      // If user has visited at least twice and latest transaction is >= 25% higher than typical
+      let deviationAlert: PriceDeviationAlert | null = null;
+      if (count >= 2) {
+        const latestAmount = g.amounts[0]; // first since ordered by date DESC
+        const typical = averageSpend;
+        if (latestAmount >= typical * 1.25 && latestAmount - typical >= 50) {
+          const percentDiff = Math.round(((latestAmount - typical) / typical) * 100);
+          deviationAlert = {
+            latestAmount,
+            typicalAmount: typical,
+            minAmount: minSpend,
+            maxAmount: maxSpend,
+            percentDiff,
+            isHigher: true,
+            message: `You usually spend ₹${minSpend.toLocaleString('en-IN')}–₹${maxSpend.toLocaleString('en-IN')} at ${g.name}. Latest ₹${latestAmount.toLocaleString('en-IN')} is ${percentDiff}% higher than average.`,
+          };
+        }
+      }
+
+      const perk = this.getRewardTipForMerchant(g.name, cards);
+
+      merchants.push({
+        name: g.name,
+        brand: g.brand,
+        categoryId: g.categoryId,
+        categoryName: g.categoryName,
+        categoryColor: g.categoryColor,
+        categoryIcon: g.categoryIcon,
+        transactionCount: count,
+        totalSpend,
+        averageSpend,
+        medianSpend,
+        minSpend,
+        maxSpend,
+        visitsPerWeek,
+        lastVisitDate: g.dates[0] || null,
+        trend,
+        deviationAlert,
+        rewardTip: perk?.tip,
+        recommendedCard: perk?.cardName,
+      });
+    });
+
+    // If fewer than 4 merchants, populate known catalogue
+    if (merchants.length < 5) {
+      for (const rule of KNOWN_MERCHANTS) {
+        if (!groupMap.has(rule.brand)) {
+          const perk = this.getRewardTipForMerchant(rule.brand, cards);
+          merchants.push({
+            name: rule.brand,
+            brand: rule.brand,
+            categoryId: rule.defaultCategoryId,
+            categoryName: rule.defaultCategoryId === 'cat_food' ? 'Food & Dining' : 'Shopping',
+            categoryColor: rule.defaultCategoryId === 'cat_food' ? '#FF6B6B' : '#FFD93D',
+            categoryIcon: rule.defaultCategoryId === 'cat_food' ? 'Utensils' : 'ShoppingBag',
+            transactionCount: 0,
+            totalSpend: 0,
+            averageSpend: 0,
+            medianSpend: 0,
+            minSpend: 0,
+            maxSpend: 0,
+            visitsPerWeek: 0,
+            lastVisitDate: null,
+            trend: 'stable',
+            deviationAlert: null,
+            rewardTip: perk?.tip,
+            recommendedCard: perk?.cardName,
+          });
+        }
+        if (merchants.length >= limit) break;
+      }
+    }
+
+    // Sort by spend DESC, then count DESC
+    merchants.sort((a, b) => b.totalSpend - a.totalSpend || b.transactionCount - a.transactionCount);
+
+    const totalSpendOnMerchants = merchants.reduce((sum, m) => sum + m.totalSpend, 0);
+    const deviationAlerts = merchants.filter((m) => m.deviationAlert !== null && m.deviationAlert !== undefined);
+    const topMerchantBySpend = merchants.find((m) => m.totalSpend > 0) || merchants[0] || null;
+    const mostFrequent = [...merchants].sort((a, b) => b.transactionCount - a.transactionCount);
+    const mostFrequentMerchant = mostFrequent.find((m) => m.transactionCount > 0) || null;
+
+    return {
+      merchants: merchants.slice(0, limit),
+      totalTrackedMerchants: groupMap.size,
+      totalSpendOnMerchants,
+      topMerchantBySpend,
+      mostFrequentMerchant,
+      deviationAlerts,
+    };
   },
 
   /**

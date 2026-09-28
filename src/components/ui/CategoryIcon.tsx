@@ -69,13 +69,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 interface CategoryIconProps {
-  name: string;
+  name?: string;
+  icon?: string;
   size?: number;
   color?: string;
 }
 
-export function CategoryIcon({ name, size = 18, color = '#FFFFFF' }: CategoryIconProps) {
-  const IconComponent = ICON_MAP[name] || HelpCircle;
+export function CategoryIcon({ name, icon, size = 18, color = '#FFFFFF' }: CategoryIconProps) {
+  const iconKey = name || icon || '';
+  const IconComponent = ICON_MAP[iconKey] || HelpCircle;
   return <IconComponent size={size} color={color} />;
 }
 

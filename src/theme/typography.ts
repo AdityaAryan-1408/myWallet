@@ -21,6 +21,10 @@ export const FontFamily = {
   numericMedium: 'JetBrainsMono-Medium',
   numericSemiBold: 'JetBrainsMono-SemiBold',
   numericBold: 'JetBrainsMono-Bold',
+  // Convenience shortcuts for analytics & intelligence dashboards
+  mono: 'JetBrainsMono',
+  sans: 'PlusJakartaSans',
+  display: 'PlusJakartaSans-Bold',
 } as const;
 
 // Pre-defined text style tokens

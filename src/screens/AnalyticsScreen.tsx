@@ -39,6 +39,8 @@ import {
   Layers,
   Sparkles,
   HelpCircle,
+  Store,
+  FileText,
 } from 'lucide-react-native';
 
 import { Colors, Typography, FontFamily, Spacing, Shapes } from '@/theme';
@@ -46,8 +48,11 @@ import { useFinancialStore } from '@/stores';
 import {
   AnalyticsRepository,
   CategoryRepository,
+  MerchantRepository,
   CategoryWithStats,
   ResiliencePillar,
+  HealthScoreFactor,
+  TransparentHealthScoreData,
 } from '@/repositories';
 import { CategoryDonut } from '@/components/ui/CategoryDonut';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
@@ -58,9 +63,19 @@ import {
   DayOfWeekChart,
   TimeDistributionBar,
   MonthComparisonCard,
+  FactorDetailSheet,
+  FinancialWrappedModal,
+  MerchantIntelligenceCard,
+  MonthlyDigestCard,
 } from '@/components/analytics';
 
-type AnalyticsTab = 'resilience' | 'overview' | 'habits' | 'comparison';
+type AnalyticsTab =
+  | 'resilience'
+  | 'overview'
+  | 'merchants'
+  | 'digest'
+  | 'habits'
+  | 'comparison';
 
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
@@ -69,6 +84,12 @@ export default function AnalyticsScreen() {
 
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('resilience');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Factor Detail Sheet State (Tier 2: Interactive Health Score)
+  const [selectedFactor, setSelectedFactor] = useState<HealthScoreFactor | null>(null);
+
+  // Financial Wrapped Modal State (Tier 2: Year-in-Review)
+  const [wrappedModalVisible, setWrappedModalVisible] = useState(false);
 
   // Month navigation (Defaults to current month)
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -108,6 +129,26 @@ export default function AnalyticsScreen() {
   const resilienceData = useMemo(() => {
     return AnalyticsRepository.getFinancialResilienceScore();
   }, [refreshing]);
+
+  // Tier 2: Transparent Health Score with 6 weighted factors & live SQLite
+  const transparentHealthData = useMemo(() => {
+    return AnalyticsRepository.getTransparentHealthScore(currentYearMonth);
+  }, [currentYearMonth, refreshing]);
+
+  // Tier 2: Annual Wrapped Story data
+  const wrappedData = useMemo(() => {
+    return AnalyticsRepository.getFinancialWrapped(selectedDate.getFullYear());
+  }, [selectedDate, refreshing]);
+
+  // Tier 2: Merchant Intelligence & Price Memory
+  const merchantReport = useMemo(() => {
+    return MerchantRepository.getMerchantIntelligence();
+  }, [refreshing]);
+
+  // Tier 3: End-of-Month Financial Digest
+  const monthlyDigest = useMemo(() => {
+    return AnalyticsRepository.getMonthlyFinancialDigest(currentYearMonth);
+  }, [currentYearMonth, refreshing]);
 
   const momComparisonData = useMemo(() => {
     return AnalyticsRepository.getMonthComparison(currentYearMonth, previousYearMonth);
@@ -177,6 +218,8 @@ export default function AnalyticsScreen() {
   const TABS: { id: AnalyticsTab; label: string; icon: React.ComponentType<{ size: number; color: string }> }[] = [
     { id: 'resilience', label: 'Resilience', icon: ShieldCheck },
     { id: 'overview', label: 'Overview', icon: PieChart },
+    { id: 'merchants', label: 'Merchants', icon: Store },
+    { id: 'digest', label: 'Digest', icon: FileText },
     { id: 'habits', label: 'Habits', icon: Flame },
     { id: 'comparison', label: 'Comparison', icon: ArrowUpDown },
   ];
@@ -223,20 +266,60 @@ export default function AnalyticsScreen() {
         </View>
       </View>
 
-      {/* Segmented Tab Navigator */}
+      {/* ─── Hero Banner: Financial Wrapped (Tier 2) ─── */}
+      <View style={styles.wrappedBannerContainer}>
+        <TouchableOpacity
+          style={styles.wrappedBanner}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setWrappedModalVisible(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={styles.wrappedBannerLeft}>
+            <View style={styles.sparkleIconBox}>
+              <Sparkles size={16} color="#000000" />
+            </View>
+            <View style={styles.wrappedTextCol}>
+              <View style={styles.wrappedBadgeRow}>
+                <Text style={styles.wrappedYearText}>{selectedDate.getFullYear()} WRAPPED</Text>
+                <View style={styles.archetypeBadge}>
+                  <Text style={styles.archetypeBadgeText}>
+                    {wrappedData.personality.badgeTitle}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.wrappedBannerTitle}>
+                Explore Annual Story & Personality
+              </Text>
+            </View>
+          </View>
+          <ChevronRight size={18} color={Colors.chartreuse} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Segmented Scrollable Tab Navigator (6 Tabs) */}
       <View style={styles.tabBarWrapper}>
-        <View style={styles.tabBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarScroll}
+        >
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
             const activeColor =
               tab.id === 'resilience'
                 ? Colors.chartreuse
+                : tab.id === 'merchants'
+                ? Colors.primaryFixed
+                : tab.id === 'digest'
+                ? '#00F0FF'
                 : tab.id === 'habits'
                 ? '#FF9E0B'
                 : tab.id === 'overview'
-                ? Colors.primaryFixed
-                : Colors.secondaryFixed;
+                ? Colors.secondaryFixed
+                : '#A855F7';
 
             return (
               <TouchableOpacity
@@ -266,7 +349,7 @@ export default function AnalyticsScreen() {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
       {/* Main Content Area */}
@@ -283,32 +366,41 @@ export default function AnalyticsScreen() {
           />
         }
       >
-        {/* ─── TAB 1: RESILIENCE ──────────────────────────────────── */}
+        {/* ─── TAB 1: RESILIENCE (Transparent Health Score) ────────── */}
         {activeTab === 'resilience' && (
           <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
-            <ResilienceGauge data={resilienceData} />
+            <ResilienceGauge
+              data={transparentHealthData}
+              onFactorPress={(factor) => setSelectedFactor(factor)}
+            />
 
             {/* Explanatory Intelligence Card */}
             <View style={styles.infoCard}>
               <View style={styles.infoTop}>
                 <Sparkles size={16} color={Colors.chartreuse} />
-                <Text style={styles.infoTitle}>HOW ZENITH QUOTIENT IS DERIVED</Text>
+                <Text style={styles.infoTitle}>TRANSPARENT 6-PILLAR HEALTH AUDIT</Text>
               </View>
               <Text style={styles.infoText}>
-                The Zenith Quotient is computed entirely offline across 4 quantitative pillars (25 pts each):
+                Zenith Quotient is computed 100% offline from your live ledger across 6 weighted quantitative pillars:
               </Text>
               <View style={styles.pillarRules}>
                 <Text style={styles.ruleItem}>
-                  • <Text style={styles.boldText}>Savings Rate</Text>: Targets ≥ 20% of monthly income saved.
+                  • <Text style={styles.boldText}>Savings Rate (25%)</Text>: Targets ≥ 20–30% of incoming cash preserved.
                 </Text>
                 <Text style={styles.ruleItem}>
-                  • <Text style={styles.boldText}>Credit Discipline</Text>: Portfolio credit utilization kept below 30%.
+                  • <Text style={styles.boldText}>Budget Adherence (20%)</Text>: Category spending kept strictly within limits.
                 </Text>
                 <Text style={styles.ruleItem}>
-                  • <Text style={styles.boldText}>Budget Adherence</Text>: Spending pace remaining within configured budget limits.
+                  • <Text style={styles.boldText}>Debt Health (15%)</Text>: Unsettled peer IOUs and net receivable stability.
                 </Text>
                 <Text style={styles.ruleItem}>
-                  • <Text style={styles.boldText}>Safety Runway</Text>: Liquid bank and cash balances covering ≥ 3–6 months of average living burn.
+                  • <Text style={styles.boldText}>CC Utilization (15%)</Text>: Portfolio credit balance kept safely below 30%.
+                </Text>
+                <Text style={styles.ruleItem}>
+                  • <Text style={styles.boldText}>Spending Consistency (15%)</Text>: Smooth daily burn avoiding volatile spikes.
+                </Text>
+                <Text style={styles.ruleItem}>
+                  • <Text style={styles.boldText}>No-Spend Discipline (10%)</Text>: Number of zero-outflow days logged.
                 </Text>
               </View>
             </View>
@@ -496,7 +588,21 @@ export default function AnalyticsScreen() {
           </Animated.View>
         )}
 
-        {/* ─── TAB 3: HABITS ──────────────────────────────────────── */}
+        {/* ─── TAB 3: MERCHANTS (Intelligence & Price Memory) ─────── */}
+        {activeTab === 'merchants' && (
+          <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
+            <MerchantIntelligenceCard report={merchantReport} />
+          </Animated.View>
+        )}
+
+        {/* ─── TAB 4: DIGEST (End-of-Month Intelligence Report) ─────── */}
+        {activeTab === 'digest' && (
+          <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
+            <MonthlyDigestCard digest={monthlyDigest} />
+          </Animated.View>
+        )}
+
+        {/* ─── TAB 5: HABITS ──────────────────────────────────────── */}
         {activeTab === 'habits' && (
           <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
             <NoSpendHeatmap data={heatmapData} />
@@ -506,7 +612,7 @@ export default function AnalyticsScreen() {
           </Animated.View>
         )}
 
-        {/* ─── TAB 4: COMPARISON ──────────────────────────────────── */}
+        {/* ─── TAB 6: COMPARISON ──────────────────────────────────── */}
         {activeTab === 'comparison' && (
           <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
             <MonthComparisonCard data={momComparisonData} />
@@ -524,6 +630,21 @@ export default function AnalyticsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* ─── MODAL 1: Factor Detail Sheet (Interactive Health Score) ─── */}
+      <FactorDetailSheet
+        visible={selectedFactor !== null}
+        factor={selectedFactor}
+        overallScore={transparentHealthData.totalScore}
+        onClose={() => setSelectedFactor(null)}
+      />
+
+      {/* ─── MODAL 2: Financial Wrapped Story (Year-in-Review) ─── */}
+      <FinancialWrappedModal
+        visible={wrappedModalVisible}
+        data={wrappedData}
+        onClose={() => setWrappedModalVisible(false)}
+      />
     </View>
   );
 }
@@ -587,29 +708,87 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.onSurface,
   },
-  tabBarWrapper: {
+  wrappedBannerContainer: {
     paddingHorizontal: Spacing.screenPadding,
+    paddingTop: Spacing.sm,
+  },
+  wrappedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: `${Colors.chartreuse}14`,
+    borderRadius: Shapes.xl,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: `${Colors.chartreuse}40`,
+  },
+  wrappedBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  sparkleIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.chartreuse,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wrappedTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  wrappedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  wrappedYearText: {
+    fontFamily: FontFamily.mono,
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: Colors.chartreuse,
+    letterSpacing: 0.6,
+  },
+  archetypeBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  archetypeBadgeText: {
+    fontFamily: FontFamily.mono,
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  wrappedBannerTitle: {
+    fontFamily: FontFamily.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  tabBarWrapper: {
     paddingVertical: Spacing.sm,
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surfaceContainer,
-    borderRadius: Shapes.pill,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
-    gap: 4,
+  tabBarScroll: {
+    paddingHorizontal: Spacing.screenPadding,
+    gap: Spacing.xs,
   },
   tabItem: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainer,
     gap: 5,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: Colors.strokeSubtle,
   },
   tabLabel: {
     ...Typography.bodySm,

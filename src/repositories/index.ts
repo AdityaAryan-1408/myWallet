@@ -16,7 +16,13 @@ export { SettingsRepository } from './settingsRepository';
 export { BudgetRepository } from './budgetRepository';
 export type { BudgetWithProgress, OverallBudgetProgress } from './budgetRepository';
 export { MerchantRepository } from './merchantRepository';
-export type { MerchantSummary, MerchantRule } from './merchantRepository';
+export type {
+  MerchantSummary,
+  MerchantRule,
+  MerchantIntelligenceItem,
+  MerchantIntelligenceReport,
+  PriceDeviationAlert,
+} from './merchantRepository';
 export { AnalyticsRepository } from './analyticsRepository';
 export type {
   MonthComparisonData,
@@ -31,6 +37,14 @@ export type {
   FinancialResilienceData,
   ResiliencePillar,
   PaymentMethodSpend,
+  HealthScoreFactorId,
+  HealthScoreFactor,
+  TransparentHealthScoreData,
+  FinancialWrappedData,
+  FinancialWrappedCategory,
+  FinancialWrappedPersonality,
+  MonthlyFinancialDigestData,
+  MonthlyDigestTopCategory,
 } from './analyticsRepository';
 export { BackupRepository } from './backupRepository';
 export type { BackupPayload, StorageStats, CloudSyncStatus } from './backupRepository';

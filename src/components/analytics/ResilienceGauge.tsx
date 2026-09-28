@@ -9,16 +9,34 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { ShieldCheck, TrendingUp, CreditCard, PieChart, ShieldAlert, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react-native';
+import {
+  ShieldCheck,
+  TrendingUp,
+  CreditCard,
+  PieChart,
+  Users,
+  Activity,
+  Flame,
+  Sparkles,
+  ChevronRight,
+  Sliders,
+} from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { Colors, Typography, FontFamily, Spacing, Shapes } from '@/theme';
-import { FinancialResilienceData, ResiliencePillar } from '@/repositories';
+import {
+  FinancialResilienceData,
+  TransparentHealthScoreData,
+  HealthScoreFactor,
+  ResiliencePillar,
+} from '@/repositories';
 
 interface ResilienceGaugeProps {
-  data: FinancialResilienceData;
+  data: FinancialResilienceData | TransparentHealthScoreData;
+  onFactorPress?: (factor: HealthScoreFactor) => void;
   onPillarPress?: (pillar: ResiliencePillar) => void;
 }
 
-export function ResilienceGauge({ data, onPillarPress }: ResilienceGaugeProps) {
+export function ResilienceGauge({ data, onFactorPress, onPillarPress }: ResilienceGaugeProps) {
   const size = 200;
   const strokeWidth = 14;
   const center = size / 2;
@@ -44,26 +62,36 @@ export function ResilienceGauge({ data, onPillarPress }: ResilienceGaugeProps) {
     return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
   };
 
-  // Clamp score 0 to 100
-  const normalizedScore = Math.min(100, Math.max(0, data.score));
+  const scoreVal = 'totalScore' in data ? data.totalScore : data.score;
+  const normalizedScore = Math.min(100, Math.max(0, scoreVal));
   const currentAngle = startAngle + (normalizedScore / 100) * totalAngle;
 
   const bgPath = describeArc(center, center, radius, startAngle, endAngle);
   const activePath = describeArc(center, center, radius, startAngle, currentAngle);
   const indicatorPoint = polarToCartesian(center, center, radius, currentAngle);
 
-  const getPillarIcon = (id: string) => {
+  const isTransparentData = 'factors' in data && Array.isArray((data as TransparentHealthScoreData).factors);
+  const factors = isTransparentData ? (data as TransparentHealthScoreData).factors : [];
+
+  const getFactorIcon = (id: string) => {
     switch (id) {
+      case 'savings_rate':
       case 'savings':
-        return <TrendingUp size={16} color={Colors.income} />;
-      case 'credit':
-        return <CreditCard size={16} color={Colors.secondaryFixed} />;
+        return <TrendingUp size={15} color={Colors.income} />;
+      case 'budget_adherence':
       case 'budget':
-        return <PieChart size={16} color={Colors.primaryFixed} />;
-      case 'runway':
-        return <ShieldCheck size={16} color={Colors.chartreuse} />;
+        return <PieChart size={15} color={Colors.primaryFixed} />;
+      case 'debt_health':
+        return <Users size={15} color="#FF9E0B" />;
+      case 'cc_utilization':
+      case 'credit':
+        return <CreditCard size={15} color={Colors.secondaryFixed} />;
+      case 'spending_consistency':
+        return <Activity size={15} color="#A855F7" />;
+      case 'no_spend_discipline':
+        return <Flame size={15} color="#FF6B6B" />;
       default:
-        return <Sparkles size={16} color={Colors.chartreuse} />;
+        return <ShieldCheck size={15} color={Colors.chartreuse} />;
     }
   };
 
@@ -77,7 +105,9 @@ export function ResilienceGauge({ data, onPillarPress }: ResilienceGaugeProps) {
           </View>
           <View>
             <Text style={styles.headerTitle}>ZENITH RESILIENCE QUOTIENT</Text>
-            <Text style={styles.headerSubtitle}>4-Pillar Solvency & Stability Audit</Text>
+            <Text style={styles.headerSubtitle}>
+              {isTransparentData ? '6 Transparent Pillars · Tap to Simulate' : '4-Pillar Solvency & Stability Audit'}
+            </Text>
           </View>
         </View>
         <View style={[styles.tierPill, { backgroundColor: `${data.tierColor}1A`, borderColor: `${data.tierColor}4D` }]}>
@@ -150,52 +180,110 @@ export function ResilienceGauge({ data, onPillarPress }: ResilienceGaugeProps) {
         </View>
       </View>
 
-      {/* 4 Pillar Breakdown Scorecards */}
+      {/* Interactive Helper Hint */}
+      {isTransparentData && (
+        <View style={styles.hintRow}>
+          <Sliders size={13} color={Colors.chartreuse} />
+          <Text style={styles.hintText}>
+            Tap any factor below to inspect formula & run "What-If" simulation
+          </Text>
+        </View>
+      )}
+
+      {/* Factors Grid */}
       <View style={styles.pillarsGrid}>
-        {data.pillars.map((pillar) => {
-          const pct = Math.round((pillar.score / pillar.maxScore) * 100);
-          const isOptimal = pillar.status === 'optimal';
-          const isFair = pillar.status === 'fair';
-          const statusColor = isOptimal ? Colors.income : isFair ? '#FFD93D' : Colors.expense;
+        {isTransparentData
+          ? factors.map((factor) => {
+              const statusColor =
+                factor.score >= 75 ? Colors.income : factor.score >= 50 ? '#FFD93D' : Colors.expense;
 
-          return (
-            <TouchableOpacity
-              key={pillar.id}
-              style={styles.pillarCard}
-              activeOpacity={0.7}
-              onPress={() => onPillarPress?.(pillar)}
-            >
-              <View style={styles.pillarTop}>
-                <View style={styles.pillarIconBox}>{getPillarIcon(pillar.id)}</View>
-                <View style={styles.pillarScoreBox}>
-                  <Text style={styles.pillarScoreVal}>{pillar.score}</Text>
-                  <Text style={styles.pillarScoreMax}>/25</Text>
-                </View>
-              </View>
+              return (
+                <TouchableOpacity
+                  key={factor.id}
+                  style={styles.pillarCard}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onFactorPress?.(factor);
+                  }}
+                >
+                  <View style={styles.pillarTop}>
+                    <View style={styles.pillarIconBox}>{getFactorIcon(factor.id)}</View>
+                    <View style={styles.weightBadge}>
+                      <Text style={styles.weightBadgeText}>{factor.weight}%</Text>
+                    </View>
+                  </View>
 
-              <Text style={styles.pillarName} numberOfLines={1}>
-                {pillar.name}
-              </Text>
+                  <Text style={styles.pillarName} numberOfLines={1}>
+                    {factor.name}
+                  </Text>
 
-              {/* Progress bar */}
-              <View style={styles.progressBarTrack}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    { width: `${pct}%`, backgroundColor: statusColor },
-                  ]}
-                />
-              </View>
+                  {/* Progress bar */}
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${factor.score}%`, backgroundColor: statusColor },
+                      ]}
+                    />
+                  </View>
 
-              <View style={styles.pillarFooter}>
-                <Text style={styles.pillarMetricLabel}>{pillar.metricLabel}</Text>
-                <Text style={[styles.pillarMetricVal, { color: statusColor }]}>
-                  {pillar.metricValue}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                  <View style={styles.pillarFooter}>
+                    <Text style={styles.pillarMetricLabel}>{factor.metricLabel}</Text>
+                    <View style={styles.scoreWithChevron}>
+                      <Text style={[styles.pillarScoreVal, { color: statusColor }]}>
+                        {factor.score}
+                      </Text>
+                      <Text style={styles.pillarScoreMax}>/100</Text>
+                      <ChevronRight size={12} color={Colors.onSurfaceVariant} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          : (data as FinancialResilienceData).pillars.map((pillar) => {
+              const pct = Math.round((pillar.score / pillar.maxScore) * 100);
+              const isOptimal = pillar.status === 'optimal';
+              const isFair = pillar.status === 'fair';
+              const statusColor = isOptimal ? Colors.income : isFair ? '#FFD93D' : Colors.expense;
+
+              return (
+                <TouchableOpacity
+                  key={pillar.id}
+                  style={styles.pillarCard}
+                  activeOpacity={0.7}
+                  onPress={() => onPillarPress?.(pillar)}
+                >
+                  <View style={styles.pillarTop}>
+                    <View style={styles.pillarIconBox}>{getFactorIcon(pillar.id)}</View>
+                    <View style={styles.pillarScoreBox}>
+                      <Text style={styles.pillarScoreVal}>{pillar.score}</Text>
+                      <Text style={styles.pillarScoreMax}>/25</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.pillarName} numberOfLines={1}>
+                    {pillar.name}
+                  </Text>
+
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${pct}%`, backgroundColor: statusColor },
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.pillarFooter}>
+                    <Text style={styles.pillarMetricLabel}>{pillar.metricLabel}</Text>
+                    <Text style={[styles.pillarMetricVal, { color: statusColor }]}>
+                      {pillar.metricValue}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
       </View>
 
       {/* Key Recommendation Box */}
@@ -421,5 +509,38 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 16,
     color: Colors.onSurface,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${Colors.chartreuse}0F`,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 6,
+    borderRadius: Shapes.md,
+    alignSelf: 'center',
+  },
+  hintText: {
+    fontFamily: FontFamily.mono,
+    fontSize: 9.5,
+    color: Colors.chartreuse,
+    letterSpacing: 0.3,
+  },
+  weightBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: Colors.surfaceContainerHighest,
+  },
+  weightBadgeText: {
+    fontFamily: FontFamily.mono,
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.onSurfaceVariant,
+  },
+  scoreWithChevron: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
 });
