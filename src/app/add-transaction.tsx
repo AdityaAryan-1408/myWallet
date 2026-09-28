@@ -31,6 +31,7 @@ import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { PaymentSourceSelector } from '@/components/transaction/PaymentSourceSelector';
 import { evaluateExpression } from '@/utils/mathEvaluator';
 import { TransactionRepository, MerchantRepository } from '@/repositories';
+import { AiIntelligenceService } from '@/services';
 import { useFinancialStore } from '@/stores';
 import { TransactionType, CategoryType } from '@/db/schema';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
@@ -182,7 +183,7 @@ export default function AddTransactionScreen() {
     const time = now.toTimeString().split(' ')[0];
     const txId = `tx_${Date.now()}`;
 
-    TransactionRepository.create({
+    const tx = {
       id: txId,
       type,
       amount: evaluatedAmount,
@@ -195,7 +196,14 @@ export default function AddTransactionScreen() {
       time,
       note: note.trim() || (type === 'transfer' ? 'Transfer' : 'Quick Expense'),
       expression: expression !== `${evaluatedAmount}` ? expression : null,
-    });
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    TransactionRepository.create(tx);
+
+    // AI Anomaly Audit Trigger (In-App & System Notification on Outliers)
+    AiIntelligenceService.auditTransaction(tx).catch(() => {});
 
     // Reactive store update
     refreshFinancials();

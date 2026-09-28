@@ -23,7 +23,7 @@ import Animated, {
 import {
   Home,
   Receipt,
-  PieChart,
+  Wallet,
   CreditCard,
   LayoutGrid,
 } from 'lucide-react-native';
@@ -37,7 +37,7 @@ interface TabConfig {
 const TAB_CONFIGS: Record<string, TabConfig> = {
   index: { label: 'Home', icon: Home },
   activity: { label: 'Activity', icon: Receipt },
-  budgets: { label: 'Budgets', icon: PieChart },
+  accounts: { label: 'Accounts', icon: Wallet },
   cards: { label: 'Cards', icon: CreditCard },
   more: { label: 'More', icon: LayoutGrid },
 };
@@ -114,7 +114,7 @@ function TabItem({ routeName, isFocused, onPress, onLongPress }: TabItemProps) {
   );
 }
 
-const DEFAULT_TABS = ['index', 'activity', 'budgets', 'cards', 'more'] as const;
+const DEFAULT_TABS = ['index', 'activity', 'accounts', 'cards', 'more'] as const;
 
 export function BottomTabBar({
   activeIndex,

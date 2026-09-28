@@ -141,9 +141,24 @@ export default function RootLayout() {
               }}
             />
 
+            {/* Zenith AI Intelligence Layer (Tier 1) */}
+            <Stack.Screen
+              name="intelligence"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
+            {/* Monthly Category Budgets */}
+            <Stack.Screen
+              name="budgets"
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+
             {/* Hidden redirect routes */}
             <Stack.Screen name="activity" />
-            <Stack.Screen name="budgets" />
             <Stack.Screen name="cards" />
             <Stack.Screen name="more" />
             <Stack.Screen name="explore" />

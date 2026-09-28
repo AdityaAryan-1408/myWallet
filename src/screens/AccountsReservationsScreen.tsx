@@ -119,7 +119,7 @@ function MiniProgressRing({
   );
 }
 
-export default function AccountsReservationsScreen() {
+export default function AccountsReservationsScreen({ isTab = false }: { isTab?: boolean } = {}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string }>();
@@ -204,16 +204,18 @@ export default function AccountsReservationsScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* ─── Top Bar ─── */}
       <Animated.View entering={FadeIn.duration(300)} style={styles.topBar}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={22} color={Colors.onSurface} />
-        </TouchableOpacity>
+        {!isTab && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            activeOpacity={0.7}
+          >
+            <ArrowLeft size={22} color={Colors.onSurface} />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.topBarCenter}>
           <View style={styles.topBarLogo}>
@@ -225,11 +227,18 @@ export default function AccountsReservationsScreen() {
           </View>
         </View>
 
-        <View style={styles.topBarAvatar}>
+        <TouchableOpacity
+          style={styles.topBarAvatar}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/settings?section=profile' as any);
+          }}
+          activeOpacity={0.7}
+        >
           <Text style={styles.avatarInitial}>
             {useFinancialStore.getState().userName?.[0]?.toUpperCase() || 'A'}
           </Text>
-        </View>
+        </TouchableOpacity>
       </Animated.View>
 
       {/* ─── Segmented Navigation Filter ─── */}
@@ -278,7 +287,10 @@ export default function AccountsReservationsScreen() {
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: isTab ? insets.bottom + 120 : insets.bottom + 40 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -633,6 +645,9 @@ export default function AccountsReservationsScreen() {
             </Text>
           </View>
         </Animated.View>
+
+        {/* Bottom padding for tab bar + FAB */}
+        {isTab && <View style={{ height: 110 }} />}
       </ScrollView>
 
       {/* ─── Modals ─── */}

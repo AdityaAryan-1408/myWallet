@@ -35,3 +35,12 @@ export type {
 export { BackupRepository } from './backupRepository';
 export type { BackupPayload, StorageStats, CloudSyncStatus } from './backupRepository';
 export { NotificationRepository } from './notificationRepository';
+export { AiRepository } from './aiRepository';
+export type {
+  SpendingAnomaly,
+  MonthlyReportCard,
+  CashFlowPrediction,
+  RecurringPattern,
+  SavingsAutopilot,
+  VelocityRadar,
+} from './aiRepository';

@@ -41,6 +41,16 @@ export const TransactionRepository = {
     );
   },
 
+  getTotalCount(): number {
+    try {
+      const db = getDatabase();
+      const row = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM transactions;');
+      return row?.count ?? 0;
+    } catch {
+      return 0;
+    }
+  },
+
   getByDateRange(startDate: string, endDate: string): Transaction[] {
     const db = getDatabase();
     return db.getAllSync<Transaction>(

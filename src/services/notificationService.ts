@@ -92,10 +92,27 @@ export const NotificationService = {
   },
 
   /**
-   * Fires an immediate test notification to verify OS-level outside-app alert delivery.
+   * Post an immediate system notification directly to the Android/iOS status bar.
+   * Ensures permissions, channels, and proper system priority.
    */
-  async sendTestNotification(): Promise<boolean> {
+  async postSystemNotification({
+    id,
+    title,
+    body,
+    channelId = 'channel_general',
+    data,
+  }: {
+    id?: string;
+    title: string;
+    body: string;
+    channelId?: 'channel_general' | 'channel_credit_cards' | 'channel_debts';
+    data?: Record<string, any>;
+  }): Promise<boolean> {
     if (Platform.OS === 'web' || !Notifications) return false;
+
+    if (!SettingsRepository.getNotificationsEnabled()) {
+      return false;
+    }
 
     try {
       const hasPermission = await this.initialize();
@@ -104,35 +121,49 @@ export const NotificationService = {
         if (status !== 'granted') return false;
       }
 
-      // 1. In-App Notification entry
-      NotificationRepository.create({
-        id: `test_${Date.now()}`,
-        type: 'system',
-        title: 'MyWallet • Test Alert ⚡',
-        body: 'System notifications, sound, and the custom wallet icon are working perfectly!',
-        is_read: 0,
-        is_dismissed: 0,
-      });
-
-      // 2. Immediate native notification
+      const notifChannel = Platform.OS === 'android' ? channelId : undefined;
       await Notifications.scheduleNotificationAsync({
+        identifier: id,
         content: {
-          title: 'MyWallet • Alert Active ⚡',
-          body: 'System notifications, sound, and the custom wallet icon are working perfectly!',
+          title,
+          body,
           sound: true,
           color: '#D4FF32',
-          data: { test: true },
+          data: data || {},
+          ...(notifChannel && { channelId: notifChannel }),
         },
-        trigger: {
-          channelId: 'channel_general',
-        },
+        trigger: null,
       });
 
       return true;
     } catch (e) {
-      console.warn('Could not send test notification:', e);
+      console.warn('Could not post system notification:', e);
       return false;
     }
+  },
+
+  /**
+   * Fires an immediate test notification to verify OS-level outside-app alert delivery.
+   */
+  async sendTestNotification(): Promise<boolean> {
+    // 1. In-App Notification entry
+    NotificationRepository.create({
+      id: `test_${Date.now()}`,
+      type: 'system',
+      title: 'MyWallet • Test Alert ⚡',
+      body: 'System notifications, sound, and the custom wallet icon are working perfectly!',
+      is_read: 0,
+      is_dismissed: 0,
+    });
+
+    // 2. Immediate native notification
+    return this.postSystemNotification({
+      id: `test_${Date.now()}`,
+      title: 'MyWallet • Alert Active ⚡',
+      body: 'System notifications, sound, and the custom wallet icon are working perfectly!',
+      channelId: 'channel_general',
+      data: { test: true },
+    });
   },
 
   /**
@@ -195,12 +226,22 @@ export const NotificationService = {
       is_dismissed: 0,
     });
 
-    // 2. Schedule native notification if running in native build with Notifications module
+    // 2. Post immediate system notification so it appears on phone's notification bar!
+    await this.postSystemNotification({
+      id: notifId,
+      title,
+      body,
+      channelId: 'channel_debts',
+      data: { entityType: 'debt', entityId: debt.id },
+    });
+
+    // 3. Schedule native recurring reminder if running with Notifications module
     if (!Notifications) return;
 
     try {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const isAlreadyScheduled = scheduled.some((s) => s.identifier === notifId);
+      const repeatId = `${notifId}_repeat`;
+      const isAlreadyScheduled = scheduled.some((s) => s.identifier === repeatId);
 
       if (debt.reminder_cadence === 'daily') {
         if (!isAlreadyScheduled) {
@@ -346,17 +387,27 @@ export const NotificationService = {
           is_dismissed: 0,
         });
 
-        // Schedule native notification if running with native Notifications module
+        // Post immediate system notification so it appears on the phone's notification bar!
+        await this.postSystemNotification({
+          id: notifId,
+          title,
+          body,
+          channelId: 'channel_credit_cards',
+          data: { entityType: 'credit_card', entityId: card.id },
+        });
+
+        // Schedule daily repeating reminder with Notifications module
         if (Notifications) {
           try {
             const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-            const isAlreadyScheduled = scheduled.some((s) => s.identifier === notifId);
+            const repeatId = `${notifId}_repeat`;
+            const isAlreadyScheduled = scheduled.some((s) => s.identifier === repeatId);
 
             if (!isAlreadyScheduled) {
               const { hour, minute } = this.getPreferredTimeParts();
 
               await Notifications.scheduleNotificationAsync({
-                identifier: notifId,
+                identifier: repeatId,
                 content: {
                   title,
                   body,
@@ -416,22 +467,26 @@ export const NotificationService = {
   },
 
   /**
-   * Cancels a scheduled native notification.
+   * Cancels a scheduled native notification and dismisses it from status bar.
    */
   async cancelReminder(identifier: string): Promise<void> {
     if (!Notifications) return;
     try {
       await Notifications.cancelScheduledNotificationAsync(identifier);
+      await Notifications.cancelScheduledNotificationAsync(`${identifier}_repeat`);
+      await Notifications.dismissNotificationAsync(identifier);
+      await Notifications.dismissNotificationAsync(`${identifier}_repeat`);
     } catch {}
   },
 
   /**
-   * Cancels all scheduled notifications.
+   * Cancels all scheduled notifications and dismisses all active alerts.
    */
   async cancelAll(): Promise<void> {
     if (!Notifications) return;
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
+      await Notifications.dismissAllNotificationsAsync();
     } catch {}
   },
 };

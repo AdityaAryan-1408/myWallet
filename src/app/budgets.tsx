@@ -1,6 +1,3 @@
-import React from 'react';
-import { Redirect } from 'expo-router';
+import { BudgetsScreen } from '@/screens';
 
-export default function BudgetsRoute() {
-  return <Redirect href="/?tab=2" />;
-}
+export default BudgetsScreen;

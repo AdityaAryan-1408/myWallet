@@ -25,7 +25,7 @@ import { Colors } from '@/theme';
 import {
   HomeScreen,
   ActivityScreen,
-  BudgetsScreen,
+  AccountsReservationsScreen,
   CardsScreen,
   MoreScreen,
 } from '@/screens';
@@ -135,7 +135,7 @@ export default function MainTabsPagerScreen() {
           <ActivityScreen />
         </View>
         <View style={{ width: windowWidth, flex: 1 }}>
-          <BudgetsScreen />
+          <AccountsReservationsScreen isTab />
         </View>
         <View style={{ width: windowWidth, flex: 1 }}>
           <CardsScreen />

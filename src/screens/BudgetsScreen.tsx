@@ -36,7 +36,7 @@ import { BudgetWithProgress } from '@/repositories';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
-export default function BudgetsScreen() {
+export default function BudgetsScreen({ showBack = true }: { showBack?: boolean } = {}) {
   const { budgets, overallBudget, refreshFinancials } = useFinancialStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +79,7 @@ export default function BudgetsScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader subtitle="BUDGETS" />
+      <ScreenHeader subtitle="BUDGETS" showBack={showBack} />
 
       <ScrollView
         style={styles.scrollView}

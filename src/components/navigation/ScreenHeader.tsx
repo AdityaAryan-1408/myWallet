@@ -12,7 +12,8 @@ import React, { useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wallet, Calendar, ChevronDown, Bell } from 'lucide-react-native';
+import { Wallet, Calendar, ChevronDown, Bell, ArrowLeft } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { Colors, Typography, Spacing, Shapes } from '@/theme';
 import { useFinancialStore } from '@/stores';
 import { CreditCard } from '@/db/schema';
@@ -23,6 +24,8 @@ interface ScreenHeaderProps {
   subtitle: string;
   showMonthPicker?: boolean;
   monthLabel?: string;
+  showBack?: boolean;
+  onBackPress?: () => void;
   onMonthPress?: () => void;
   onAvatarPress?: () => void;
 }
@@ -31,6 +34,8 @@ export function ScreenHeader({
   subtitle,
   showMonthPicker = true,
   monthLabel = 'Sep 2026',
+  showBack = false,
+  onBackPress,
   onMonthPress,
   onAvatarPress,
 }: ScreenHeaderProps) {
@@ -54,11 +59,28 @@ export function ScreenHeader({
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.row}>
-        {/* Left: Logo + App Name */}
+        {/* Left: Logo/Back + App Name */}
         <View style={styles.leftSection}>
-          <View style={styles.logoContainer}>
-            <Wallet size={18} color={Colors.primaryFixed} />
-          </View>
+          {showBack ? (
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (onBackPress) {
+                  onBackPress();
+                } else {
+                  router.back();
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <ArrowLeft size={20} color={Colors.onSurface} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.logoContainer}>
+              <Wallet size={18} color={Colors.primaryFixed} />
+            </View>
+          )}
           <View style={styles.titleContainer}>
             <Text style={styles.appName}>MyWallet</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
@@ -173,6 +195,16 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: Shapes.md,
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: Colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',

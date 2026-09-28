@@ -9,3 +9,4 @@ export { default as CategoriesScreen } from './CategoriesScreen';
 export { default as DebtsScreen } from './DebtsScreen';
 export { default as AnalyticsScreen } from './AnalyticsScreen';
 export { SettingsScreen } from './SettingsScreen';
+export { default as IntelligenceScreen } from './IntelligenceScreen';

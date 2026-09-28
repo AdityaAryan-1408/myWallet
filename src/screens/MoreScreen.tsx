@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   Settings,
   Info,
+  Sparkles,
+  PieChart,
 } from 'lucide-react-native';
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
 import { useFinancialStore } from '@/stores';
@@ -38,12 +40,12 @@ interface GridItem {
 
 const GRID_ITEMS: GridItem[] = [
   {
-    id: 'accounts',
-    title: 'Accounts & Cash',
-    description: 'Bank balances & cash',
-    icon: Wallet,
+    id: 'budgets',
+    title: 'Budgets & Limits',
+    description: 'Category spending caps',
+    icon: PieChart,
     accentColor: Colors.primaryFixed,
-    badge: '3 Active',
+    badge: 'Active',
   },
   {
     id: 'reservations',
@@ -84,11 +86,12 @@ const GRID_ITEMS: GridItem[] = [
     badge: 'Offline',
   },
   {
-    id: 'security',
-    title: 'Security & Lock',
-    description: 'Biometrics & App PIN',
-    icon: ShieldCheck,
+    id: 'intelligence',
+    title: 'Zenith AI',
+    description: 'Predictor & Anomaly Radar',
+    icon: Sparkles,
     accentColor: Colors.primaryFixed,
+    badge: 'ONLINE',
   },
   {
     id: 'settings',
@@ -101,7 +104,7 @@ const GRID_ITEMS: GridItem[] = [
 
 export default function MoreScreen() {
   const router = useRouter();
-  const { accounts, reservations, totalReservedMoney, categories, debtSummary } = useFinancialStore();
+  const { accounts, reservations, totalReservedMoney, categories, debtSummary, budgets } = useFinancialStore();
 
   const activeAccountsCount = accounts.filter((a) => a.is_active === 1).length;
   const activeReservationsCount = reservations.filter((r) => r.is_active === 1).length;
@@ -118,8 +121,8 @@ export default function MoreScreen() {
   const handleGridPress = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (id === 'accounts') {
-      router.push({ pathname: '/accounts' as any, params: { section: 'accounts' } });
+    if (id === 'budgets') {
+      router.push('/budgets' as any);
     } else if (id === 'reservations') {
       router.push({ pathname: '/accounts' as any, params: { section: 'reservations' } });
     } else if (id === 'categories') {
@@ -130,8 +133,8 @@ export default function MoreScreen() {
       router.push('/analytics' as any);
     } else if (id === 'backup') {
       router.push({ pathname: '/settings' as any, params: { section: 'backup' } });
-    } else if (id === 'security') {
-      router.push({ pathname: '/settings' as any, params: { section: 'security' } });
+    } else if (id === 'intelligence') {
+      router.push('/intelligence' as any);
     } else if (id === 'settings') {
       router.push({ pathname: '/settings' as any, params: { section: 'preferences' } });
     }
@@ -183,8 +186,8 @@ export default function MoreScreen() {
           {GRID_ITEMS.map((item, idx) => {
             const IconComponent = item.icon;
             const badge =
-              item.id === 'accounts'
-                ? `${activeAccountsCount} Active`
+              item.id === 'budgets'
+                ? `${budgets.length} Categories`
                 : item.id === 'reservations'
                   ? `₹${totalReservedMoney.toLocaleString('en-IN')}`
                   : item.id === 'categories'

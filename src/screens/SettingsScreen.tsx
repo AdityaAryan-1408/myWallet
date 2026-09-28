@@ -50,6 +50,7 @@ import {
 import {
   SettingsRepository,
   BackupRepository,
+  TransactionRepository,
 } from '@/repositories';
 import { NotificationService } from '@/services';
 import { WidgetPreviewCard } from '@/components/widget';
@@ -110,6 +111,14 @@ export function SettingsScreen() {
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() =>
     SettingsRepository.getHapticsEnabled()
   );
+
+  const totalTransactionsCount = useMemo(() => {
+    try {
+      return TransactionRepository.getTotalCount();
+    } catch {
+      return 0;
+    }
+  }, [recentTransactions]);
 
   // Notification state (Phase 16)
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() =>
@@ -600,7 +609,7 @@ export function SettingsScreen() {
                 </View>
                 <View style={styles.metricDivider} />
                 <View style={styles.metricItem}>
-                  <Text style={styles.metricValue}>{recentTransactions.length}+</Text>
+                  <Text style={styles.metricValue}>{totalTransactionsCount}</Text>
                   <Text style={styles.metricLabel}>Transactions</Text>
                 </View>
               </View>
