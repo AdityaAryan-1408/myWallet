@@ -149,16 +149,16 @@ export function FactorDetailSheet({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
+      statusBarTranslucent={true}
+      navigationBarTranslucent={true}
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
 
-        <Animated.View
-          entering={SlideInDown.duration(260)}
-          exiting={SlideOutDown.duration(200)}
-          style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.lg }]}
+        <View
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 24) }]}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -445,7 +445,7 @@ export function FactorDetailSheet({
               </View>
             </View>
           </ScrollView>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -464,9 +464,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Shapes.xxl,
     borderTopRightRadius: Shapes.xxl,
-    borderWidth: 1,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 0,
     borderColor: Colors.strokeSubtle,
     maxHeight: '90%',
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -511,6 +515,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: Spacing.lg,
+    paddingBottom: 40,
     gap: Spacing.md,
   },
   heroCard: {

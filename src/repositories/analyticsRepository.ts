@@ -12,6 +12,7 @@ import { AccountRepository } from './accountRepository';
 import { CreditCardRepository } from './creditCardRepository';
 import { BudgetRepository } from './budgetRepository';
 import { DebtRepository } from './debtRepository';
+import { SettingsRepository } from './settingsRepository';
 
 // ─── Interfaces ──────────────────────────────────────────────────────
 
@@ -98,6 +99,38 @@ export interface HeatmapDay {
   isNoSpend: boolean;
   transactionCount: number;
   isToday: boolean;
+  intensity: 'zero' | 'low' | 'medium' | 'high';
+}
+
+export interface DayTransactionDetail {
+  id: string;
+  amount: number;
+  type: 'expense' | 'income' | 'transfer';
+  note: string | null;
+  categoryName: string;
+  categoryColor: string;
+  categoryIcon: string;
+  accountName?: string;
+  creditCardName?: string;
+  time: string;
+}
+
+export interface IncomeVsExpenseRatioData {
+  monthKey: string;
+  monthLabel: string;
+  income: number;
+  expense: number;
+  netSaved: number;
+  savingsRate: number;
+  targetSavingsRate: number;
+  targetStatus: 'exceeded' | 'on_track' | 'lagging';
+  monthlyHistory6M: Array<{
+    monthKey: string;
+    monthLabel: string;
+    income: number;
+    expense: number;
+    savingsRate: number;
+  }>;
 }
 
 export interface NoSpendHeatmapData {
@@ -683,6 +716,9 @@ export const AnalyticsRepository = {
     const startDate = dates[0];
     const endDate = dates[dates.length - 1];
 
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     interface DailySpendRow {
       date: string;
       spend: number;
@@ -700,7 +736,8 @@ export const AnalyticsRepository = {
     const spendMap = new Map<string, DailySpendRow>();
     rows.forEach((r) => spendMap.set(r.date, r));
 
-    const todayStr = referenceDate.toISOString().split('T')[0];
+    const nonZeroSpends = rows.map((r) => r.spend).filter((s) => s > 0).sort((a, b) => a - b);
+    const medianSpend = nonZeroSpends.length > 0 ? nonZeroSpends[Math.floor(nonZeroSpends.length / 2)] : 500;
 
     const days: HeatmapDay[] = dates.map((dateStr) => {
       const [y, m, d] = dateStr.split('-').map(Number);
@@ -708,6 +745,12 @@ export const AnalyticsRepository = {
       const match = spendMap.get(dateStr);
       const spend = match?.spend ?? 0;
       const cnt = match?.cnt ?? 0;
+
+      let intensity: 'zero' | 'low' | 'medium' | 'high' = 'zero';
+      if (spend === 0) intensity = 'zero';
+      else if (spend <= medianSpend * 0.75) intensity = 'low';
+      else if (spend <= medianSpend * 1.6) intensity = 'medium';
+      else intensity = 'high';
 
       return {
         date: dateStr,
@@ -717,6 +760,7 @@ export const AnalyticsRepository = {
         isNoSpend: spend === 0,
         transactionCount: cnt,
         isToday: dateStr === todayStr,
+        intensity,
       };
     });
 
@@ -756,6 +800,135 @@ export const AnalyticsRepository = {
       currentStreak,
       longestStreak,
       noSpendRate,
+    };
+  },
+
+  /**
+   * Tier 4, Feature 10: Fetches all transactions on a given day for the Heatmap Day Inspector.
+   */
+  getDayTransactions(dateStr: string): DayTransactionDetail[] {
+    const db = getDatabase();
+    interface TxRow {
+      id: string;
+      amount: number;
+      type: string;
+      note: string | null;
+      cat_name: string | null;
+      cat_color: string | null;
+      cat_icon: string | null;
+      acc_name: string | null;
+      card_name: string | null;
+      time: string | null;
+    }
+
+    let rows: TxRow[] = [];
+    try {
+      rows = db.getAllSync<TxRow>(
+        `SELECT 
+           t.id, t.amount, t.type, t.note,
+           c.name as cat_name, c.color as cat_color, c.icon as cat_icon,
+           a.name as acc_name,
+           cc.name as card_name,
+           t.time
+         FROM transactions t
+         LEFT JOIN categories c ON t.category_id = c.id
+         LEFT JOIN accounts a ON t.account_id = a.id
+         LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
+         WHERE t.date = ?
+         ORDER BY t.time DESC, t.created_at DESC;`,
+        [dateStr]
+      );
+    } catch {
+      rows = [];
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      amount: r.amount,
+      type: (r.type as any) || 'expense',
+      note: r.note,
+      categoryName: r.cat_name || 'General',
+      categoryColor: r.cat_color || Colors.primaryFixed,
+      categoryIcon: r.cat_icon || 'ShoppingBag',
+      accountName: r.acc_name || undefined,
+      creditCardName: r.card_name || undefined,
+      time: r.time || '12:00',
+    }));
+  },
+
+  /**
+   * Tier 4, Feature 14: Income vs Expense Ratio Tracker
+   * Computes living savings rate, target goal progress, and 6-month historical curve.
+   */
+  getIncomeVsExpenseRatio(targetYM?: string): IncomeVsExpenseRatioData {
+    const db = getDatabase();
+    const now = new Date();
+    const ym = targetYM || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [y, m] = ym.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, 1);
+    const monthLabel = dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+    // Target savings rate from settings (default 30%)
+    const targetSavingsRate = parseInt(SettingsRepository.get('target_savings_rate', '30'), 10) || 30;
+
+    // 1. Current month numbers
+    const incRow = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions WHERE strftime('%Y-%m', date) = ? AND type = 'income';`,
+      [ym]
+    );
+    const expRow = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions WHERE strftime('%Y-%m', date) = ? AND type = 'expense';`,
+      [ym]
+    );
+
+    const income = incRow?.total ?? 0;
+    const expense = expRow?.total ?? 0;
+    const netSaved = Math.max(0, income - expense);
+    const savingsRate = income > 0 ? Math.round((netSaved / income) * 100) : 0;
+
+    let targetStatus: 'exceeded' | 'on_track' | 'lagging' = 'on_track';
+    if (savingsRate >= targetSavingsRate + 5) targetStatus = 'exceeded';
+    else if (savingsRate >= targetSavingsRate - 5) targetStatus = 'on_track';
+    else targetStatus = 'lagging';
+
+    // 2. 6-Month history curve
+    const monthlyHistory6M: IncomeVsExpenseRatioData['monthlyHistory6M'] = [];
+    for (let i = 5; i >= 0; i--) {
+      const histDate = new Date(y, m - 1 - i, 1);
+      const histYM = `${histDate.getFullYear()}-${String(histDate.getMonth() + 1).padStart(2, '0')}`;
+      const histLabel = histDate.toLocaleDateString('en-US', { month: 'short' });
+
+      const hInc = db.getFirstSync<{ total: number | null }>(
+        `SELECT SUM(amount) as total FROM transactions WHERE strftime('%Y-%m', date) = ? AND type = 'income';`,
+        [histYM]
+      )?.total ?? 0;
+      const hExp = db.getFirstSync<{ total: number | null }>(
+        `SELECT SUM(amount) as total FROM transactions WHERE strftime('%Y-%m', date) = ? AND type = 'expense';`,
+        [histYM]
+      )?.total ?? 0;
+
+      const hSaved = Math.max(0, hInc - hExp);
+      const hRate = hInc > 0 ? Math.round((hSaved / hInc) * 100) : 0;
+
+      monthlyHistory6M.push({
+        monthKey: histYM,
+        monthLabel: histLabel,
+        income: hInc,
+        expense: hExp,
+        savingsRate: hRate,
+      });
+    }
+
+    return {
+      monthKey: ym,
+      monthLabel,
+      income,
+      expense,
+      netSaved,
+      savingsRate,
+      targetSavingsRate,
+      targetStatus,
+      monthlyHistory6M,
     };
   },
 

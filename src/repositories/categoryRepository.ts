@@ -199,4 +199,130 @@ export const CategoryRepository = {
 
     return db.getAllSync<CategoryWithStats>(query, [month, parentId]);
   },
+
+  /**
+   * Tier 4, Feature 11: Category Trend Sparklines
+   * Computes 6-month historical spending curves for every active category.
+   */
+  getCategory6MonthTrends(type: 'expense' | 'income' = 'expense'): CategoryTrendItem[] {
+    const db = getDatabase();
+    const now = new Date();
+
+    // 1. Generate the last 6 months (oldest to newest)
+    const months: Array<{ ym: string; label: string }> = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { month: 'short' });
+      months.push({ ym, label });
+    }
+
+    const oldestYM = months[0].ym;
+
+    // 2. Fetch all active top-level categories
+    const categories = db.getAllSync<Category>(
+      `SELECT * FROM categories WHERE is_active = 1 AND parent_id IS NULL AND type = ? ORDER BY display_order ASC, name ASC;`,
+      [type]
+    );
+
+    // 3. Fetch monthly spending per category for the last 6 months
+    interface CatSpendRow {
+      category_id: string;
+      ym: string;
+      total: number;
+    }
+
+    let spendRows: CatSpendRow[] = [];
+    try {
+      spendRows = db.getAllSync<CatSpendRow>(
+        `SELECT category_id, strftime('%Y-%m', date) as ym, SUM(amount) as total
+         FROM transactions
+         WHERE type = ? AND date >= ? AND category_id IS NOT NULL
+         GROUP BY category_id, ym;`,
+        [type, `${oldestYM}-01`]
+      );
+    } catch {
+      spendRows = [];
+    }
+
+    const spendMap = new Map<string, number>(); // `${catId}_${ym}` -> total
+    spendRows.forEach((r) => {
+      spendMap.set(`${r.category_id}_${r.ym}`, r.total);
+    });
+
+    const results: CategoryTrendItem[] = [];
+
+    categories.forEach((cat) => {
+      const monthlySpends: CategoryMonthSpend[] = months.map((m) => ({
+        monthKey: m.ym,
+        monthLabel: m.label,
+        amount: spendMap.get(`${cat.id}_${m.ym}`) ?? 0,
+      }));
+
+      const amounts = monthlySpends.map((m) => m.amount);
+      const total6M = amounts.reduce((s, a) => s + a, 0);
+
+      // Only show categories that have some activity in the last 6 months
+      if (total6M === 0) return;
+
+      const currentAmount = amounts[amounts.length - 1]; // latest month
+      const nonZeroAmounts = amounts.filter((a) => a > 0);
+      const averageAmount = Math.round(total6M / 6);
+      const minAmount = Math.min(...amounts);
+      const maxAmount = Math.max(...amounts);
+
+      // Compare last 2 months vs previous 2 months for trend direction
+      const recentAvg = (amounts[4] + amounts[5]) / 2;
+      const priorAvg = (amounts[2] + amounts[3]) / 2;
+
+      let trendDirection: 'rising' | 'falling' | 'stable' = 'stable';
+      if (priorAvg > 0) {
+        if (recentAvg >= priorAvg * 1.15) trendDirection = 'rising';
+        else if (recentAvg <= priorAvg * 0.85) trendDirection = 'falling';
+      } else if (recentAvg > 0) {
+        trendDirection = 'rising';
+      }
+
+      // Percent change 6M
+      const firstNonZero = nonZeroAmounts[0] || 1;
+      const percentChange6M = Math.round(((currentAmount - firstNonZero) / firstNonZero) * 100);
+
+      results.push({
+        categoryId: cat.id,
+        categoryName: cat.name,
+        categoryColor: cat.color,
+        categoryIcon: cat.icon,
+        monthlySpends,
+        currentAmount,
+        averageAmount,
+        minAmount,
+        maxAmount,
+        trendDirection,
+        percentChange6M,
+      });
+    });
+
+    // Sort by current month spend DESC, then total 6M spend DESC
+    return results.sort((a, b) => b.currentAmount - a.currentAmount || b.averageAmount - a.averageAmount);
+  },
 };
+
+export interface CategoryMonthSpend {
+  monthKey: string;
+  monthLabel: string;
+  amount: number;
+}
+
+export interface CategoryTrendItem {
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  categoryIcon: string;
+  monthlySpends: CategoryMonthSpend[];
+  currentAmount: number;
+  averageAmount: number;
+  minAmount: number;
+  maxAmount: number;
+  trendDirection: 'rising' | 'falling' | 'stable';
+  percentChange6M: number;
+}

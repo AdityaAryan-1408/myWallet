@@ -29,6 +29,8 @@ import { PaperProvider } from 'react-native-paper';
 
 import { Colors, PaperTheme } from '@/theme';
 import { useFinancialStore } from '@/stores';
+import { AiIntelligenceService } from '@/services/aiIntelligenceService';
+import { NotificationService } from '@/services/notificationService';
 
 // Prevent splash screen from auto-hiding before fonts load
 SplashScreen.preventAutoHideAsync();
@@ -52,6 +54,10 @@ export default function RootLayout() {
     if (fontsLoaded || fontError) {
       try {
         useFinancialStore.getState().initialize();
+        // Purge any stale test anomaly notifications left from debug features
+        AiIntelligenceService.purgeTestNotifications();
+        // Synchronize and schedule notification reminders once at launch
+        NotificationService.syncAllReminders().catch(() => {});
       } catch (e) {
         console.warn('Database initialization deferred:', e);
       }

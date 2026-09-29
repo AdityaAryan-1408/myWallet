@@ -41,6 +41,8 @@ if (!isExpoGo && Platform.OS !== 'web') {
 }
 
 export const NotificationService = {
+  _listenerRegistered: false,
+
   /**
    * Initializes notification channels on Android and requests permissions.
    */
@@ -82,6 +84,47 @@ export const NotificationService = {
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
+      }
+
+      // Set up notification received listener once
+      if (!this._listenerRegistered && Notifications) {
+        this._listenerRegistered = true;
+        Notifications.addNotificationReceivedListener((notification) => {
+          try {
+            const data = notification.request.content.data as Record<string, any> | undefined;
+            if (data?.entityType === 'debt' && typeof data?.entityId === 'string') {
+              const debt = DebtRepository.getById(data.entityId);
+              if (debt && debt.is_settled === 0) {
+                const formattedAmount = `₹${Math.round(debt.amount).toLocaleString('en-IN')}`;
+                const isReceivable = debt.direction === 'they_owe';
+                const title = isReceivable
+                  ? `Collect ${formattedAmount} from ${debt.person_name}`
+                  : `Pay ${formattedAmount} back to ${debt.person_name}`;
+                const body = debt.reason
+                  ? `Note: ${debt.reason}`
+                  : (isReceivable
+                      ? `Friendly reminder to collect your pending dues from ${debt.person_name}.`
+                      : `Friendly reminder to return pending money to ${debt.person_name}.`);
+
+                NotificationRepository.create({
+                  id: `inapp_debt_${debt.id}`,
+                  type: 'debt_reminder',
+                  title,
+                  body,
+                  entity_type: 'debt',
+                  entity_id: debt.id,
+                  action_type: 'settle_debt',
+                  action_payload: debt.id,
+                  is_read: 0,
+                  is_dismissed: 0,
+                });
+                DebtRepository.update(debt.id, { last_reminded_at: new Date().toISOString() });
+              }
+            }
+          } catch (e) {
+            console.warn('Error handling received notification in listener:', e);
+          }
+        });
       }
 
       return finalStatus === 'granted';
@@ -181,6 +224,59 @@ export const NotificationService = {
   },
 
   /**
+   * Evaluates if an in-app debt reminder should be generated right now based on cadence.
+   */
+  shouldCreateInAppDebtReminder(debt: PeopleDebt, hour: number, minute: number): boolean {
+    if (debt.is_settled === 1 || !debt.reminder_cadence || debt.reminder_cadence === 'none') {
+      return false;
+    }
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const targetMinutes = hour * 60 + minute;
+    const isPreferredTimePassed = nowMinutes >= targetMinutes;
+
+    if (debt.reminder_cadence === 'daily') {
+      if (debt.last_reminded_at) {
+        const lastDate = debt.last_reminded_at.split('T')[0];
+        if (lastDate === todayStr) {
+          // Already reminded today
+          return false;
+        }
+      }
+      return isPreferredTimePassed;
+    }
+
+    if (debt.reminder_cadence === 'weekly') {
+      if (debt.last_reminded_at) {
+        const lastRemindedTime = new Date(debt.last_reminded_at).getTime();
+        const daysSince = (now.getTime() - lastRemindedTime) / (1000 * 60 * 60 * 24);
+        if (daysSince < 6) {
+          // Reminded within past 6 days
+          return false;
+        }
+      }
+      // Check if today matches the scheduled weekday
+      const refDate = debt.reminder_date
+        ? new Date(debt.reminder_date)
+        : (debt.created_at ? new Date(debt.created_at) : now);
+      const isCorrectDayOfWeek = now.getDay() === refDate.getDay();
+      return isCorrectDayOfWeek && isPreferredTimePassed;
+    }
+
+    if (debt.reminder_cadence === 'custom_date' && debt.reminder_date) {
+      if (debt.last_reminded_at) {
+        return false;
+      }
+      const isDateReached = todayStr >= debt.reminder_date;
+      return isDateReached && isPreferredTimePassed;
+    }
+
+    return false;
+  },
+
+  /**
    * Schedule or update a reminder for a specific debt.
    */
   async scheduleDebtReminder(debt: PeopleDebt): Promise<void> {
@@ -212,76 +308,70 @@ export const NotificationService = {
           ? `Friendly reminder to collect your pending dues from ${debt.person_name}.`
           : `Friendly reminder to return pending money to ${debt.person_name}.`);
 
-    // 1. Create In-App Notification entry (always active in SQLite!)
-    NotificationRepository.create({
-      id: inAppId,
-      type: 'debt_reminder',
-      title,
-      body,
-      entity_type: 'debt',
-      entity_id: debt.id,
-      action_type: 'settle_debt',
-      action_payload: debt.id,
-      is_read: 0,
-      is_dismissed: 0,
-    });
+    // 1. In-App Notification check: Only create/update when cadence indicates it is due!
+    if (this.shouldCreateInAppDebtReminder(debt, hour, minute)) {
+      NotificationRepository.create({
+        id: inAppId,
+        type: 'debt_reminder',
+        title,
+        body,
+        entity_type: 'debt',
+        entity_id: debt.id,
+        action_type: 'settle_debt',
+        action_payload: debt.id,
+        is_read: 0,
+        is_dismissed: 0,
+      });
+      DebtRepository.update(debt.id, { last_reminded_at: new Date().toISOString() });
+    }
 
-    // 2. Post immediate system notification so it appears on phone's notification bar!
-    await this.postSystemNotification({
-      id: notifId,
-      title,
-      body,
-      channelId: 'channel_debts',
-      data: { entityType: 'debt', entityId: debt.id },
-    });
-
-    // 3. Schedule native recurring reminder if running with Notifications module
+    // 2. Schedule native recurring reminder with Notifications module
+    // Note: Do NOT post immediate system notification here; the OS triggers it at scheduled time!
     if (!Notifications) return;
 
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const repeatId = `${notifId}_repeat`;
-      const isAlreadyScheduled = scheduled.some((s) => s.identifier === repeatId);
+      await this.cancelReminder(notifId);
 
       if (debt.reminder_cadence === 'daily') {
-        if (!isAlreadyScheduled) {
-          await Notifications.scheduleNotificationAsync({
-            identifier: notifId,
-            content: {
-              title,
-              body,
-              data: { entityType: 'debt', entityId: debt.id },
-              sound: true,
-            },
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DAILY,
-              hour,
-              minute,
-              channelId: 'channel_debts',
-            },
-          });
-        }
+        await Notifications.scheduleNotificationAsync({
+          identifier: notifId,
+          content: {
+            title,
+            body,
+            data: { entityType: 'debt', entityId: debt.id },
+            sound: true,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour,
+            minute,
+            channelId: 'channel_debts',
+          },
+        });
       } else if (debt.reminder_cadence === 'weekly') {
-        if (!isAlreadyScheduled) {
-          await Notifications.scheduleNotificationAsync({
-            identifier: notifId,
-            content: {
-              title,
-              body,
-              data: { entityType: 'debt', entityId: debt.id },
-              sound: true,
-            },
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-              weekday: 2, // Tuesday default
-              hour,
-              minute,
-              channelId: 'channel_debts',
-            },
-          });
-        }
+        const refDate = debt.reminder_date
+          ? new Date(debt.reminder_date)
+          : (debt.created_at ? new Date(debt.created_at) : new Date());
+        // Expo Notifications weekly trigger weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+        const weekday = refDate.getDay() + 1;
+
+        await Notifications.scheduleNotificationAsync({
+          identifier: notifId,
+          content: {
+            title,
+            body,
+            data: { entityType: 'debt', entityId: debt.id },
+            sound: true,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            weekday,
+            hour,
+            minute,
+            channelId: 'channel_debts',
+          },
+        });
       } else if (debt.reminder_cadence === 'custom_date' && debt.reminder_date) {
-        await this.cancelReminder(notifId);
         const targetDate = new Date(`${debt.reminder_date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
         if (targetDate.getTime() > Date.now()) {
           await Notifications.scheduleNotificationAsync({
@@ -374,6 +464,10 @@ export const NotificationService = {
 
       if (title && body) {
         // Sync in-app notification (always active in SQLite!)
+        const existing = NotificationRepository.getAll().find(
+          (n) => n.entity_type === 'credit_card' && n.entity_id === card.id
+        );
+
         NotificationRepository.create({
           id: inAppId,
           type: notifType,
@@ -383,45 +477,31 @@ export const NotificationService = {
           entity_id: card.id,
           action_type: 'pay_card',
           action_payload: card.id,
-          is_read: 0,
+          is_read: existing ? existing.is_read : 0,
           is_dismissed: 0,
-        });
-
-        // Post immediate system notification so it appears on the phone's notification bar!
-        await this.postSystemNotification({
-          id: notifId,
-          title,
-          body,
-          channelId: 'channel_credit_cards',
-          data: { entityType: 'credit_card', entityId: card.id },
         });
 
         // Schedule daily repeating reminder with Notifications module
         if (Notifications) {
           try {
-            const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-            const repeatId = `${notifId}_repeat`;
-            const isAlreadyScheduled = scheduled.some((s) => s.identifier === repeatId);
+            await this.cancelReminder(notifId);
+            const { hour, minute } = this.getPreferredTimeParts();
 
-            if (!isAlreadyScheduled) {
-              const { hour, minute } = this.getPreferredTimeParts();
-
-              await Notifications.scheduleNotificationAsync({
-                identifier: repeatId,
-                content: {
-                  title,
-                  body,
-                  data: { entityType: 'credit_card', entityId: card.id },
-                  sound: true,
-                },
-                trigger: {
-                  type: Notifications.SchedulableTriggerInputTypes.DAILY,
-                  hour,
-                  minute,
-                  channelId: 'channel_credit_cards',
-                },
-              });
-            }
+            await Notifications.scheduleNotificationAsync({
+              identifier: notifId,
+              content: {
+                title,
+                body,
+                data: { entityType: 'credit_card', entityId: card.id },
+                sound: true,
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DAILY,
+                hour,
+                minute,
+                channelId: 'channel_credit_cards',
+              },
+            });
           } catch (e) {
             console.warn(`Could not schedule native card notification for ${card.id}:`, e);
           }

@@ -1,18 +1,15 @@
 /**
  * MyWallet — Home Dashboard Screen
  * 
- * Phase 3: Connected to real SQLite database via Zustand.
- * Features:
- * - Dynamic rolling numbers on Available to Spend
- * - Mathematical breakdown toggle (Bank Balances − Obligations − Reserved = Available)
- * - Real monthly summary (Income, Expenses, Saved)
- * - SVG Category Donut chart
- * - Live cards snapshot
- * - Recent transaction feed with category icon badges
- * - Pull-to-refresh
+ * Phase 3 + Feature 15: Fully Modular & Customizable Dashboard.
+ * - Dynamic rolling numbers on Available to Spend (Hero card permanently pinned)
+ * - 17 Reorganizable, Pinnable, and Removable Dashboard Cards
+ * - Long-press or Customize button to enter interactive Edit Mode
+ * - Bottom Sheet Card Picker with category filters & toggles
+ * - Persistent layout state stored locally in SQLite user_settings
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,31 +20,29 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Animated, {
-  FadeInDown,
-} from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import {
   Info,
-  ChevronDown,
-  ChevronUp,
-  CreditCard,
-  TrendingDown,
-  TrendingUp,
+  LayoutGrid,
+  Plus,
+  Check,
   Sparkles,
 } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
-import { CategoryDonut } from '@/components/ui/CategoryDonut';
-import { CategoryIcon } from '@/components/ui/CategoryIcon';
 import {
-  DashboardNoteBlock,
   MonthCalendarModal,
   ProfileNameModal,
 } from '@/components/dashboard';
+import {
+  DashboardCardWrapper,
+  DashboardCardRenderer,
+  DashboardCardPicker,
+} from '@/components/home';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
-import { useFinancialStore } from '@/stores';
-import { CreditCardRepository } from '@/repositories';
+import { useFinancialStore, useDashboardStore } from '@/stores';
+import { BudgetRepository } from '@/repositories';
 
 export interface HomeScreenProps {
   onNavigateTab?: (index: number) => void;
@@ -65,16 +60,30 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     dailySpendLimit,
     daysRemainingInMonth,
     monthlyTotals,
-    categorySpends,
-    creditCards,
-    recentTransactions,
     refreshFinancials,
   } = useFinancialStore();
+
+  const cards = useDashboardStore((s) => s.cards);
+  const isEditMode = useDashboardStore((s) => s.isEditMode);
+  const isPickerOpen = useDashboardStore((s) => s.isPickerOpen);
+  const setPickerOpen = useDashboardStore((s) => s.setPickerOpen);
+  const setEditMode = useDashboardStore((s) => s.setEditMode);
+  const loadStoredLayout = useDashboardStore((s) => s.loadStoredLayout);
 
   const [refreshing, setRefreshing] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
+
+  // Load layout on initial mount
+  useEffect(() => {
+    loadStoredLayout();
+  }, [loadStoredLayout]);
+
+  // Daily Budget Micro-Alerts (proactive warnings at 75%, 90%, 100%+)
+  const budgetAlerts = useMemo(() => {
+    return BudgetRepository.checkBudgetThresholds();
+  }, [refreshing, monthlyTotals.expense]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -82,8 +91,15 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     setTimeout(() => setRefreshing(false), 400);
   };
 
-  // Category donut data: uses real logged category spends
-  const donutData = categorySpends;
+  // Sort visible cards: Pinned cards first, sorted by order; then unpinned cards, sorted by order
+  const visibleCards = useMemo(() => {
+    return [...cards]
+      .filter((c) => c.visible)
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return a.order - b.order;
+      });
+  }, [cards]);
 
   return (
     <View style={styles.screen}>
@@ -108,13 +124,13 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           />
         }
       >
-        {/* ─── Personalized Greeting (Phase 3.9) ─── */}
+        {/* ─── Personalized Greeting (Permanent) ─── */}
         <Animated.View entering={FadeInDown.duration(500)} style={styles.greetingSection}>
           <Text style={styles.greetingTitle}>Hi, {userName} 👋</Text>
           <Text style={styles.greetingSubtitle}>Here is your real-time financial pulse</Text>
         </Animated.View>
 
-        {/* ─── Hero Card: Safe-to-Spend ─── */}
+        {/* ─── Hero Card: Safe-to-Spend (Permanent) ─── */}
         <Animated.View
           entering={FadeInDown.duration(600).delay(100)}
           style={[
@@ -215,237 +231,92 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           </View>
         </Animated.View>
 
-        {/* ─── Monthly Summary: Income / Expenses / Saved ─── */}
-        <Animated.View
-          entering={FadeInDown.duration(600).delay(200)}
-          style={styles.summaryRow}
-        >
-          <View style={styles.summaryTile}>
-            <View style={styles.tileHeader}>
-              <TrendingUp size={12} color={Colors.income} />
-              <Text style={styles.tileLabel}>INCOME</Text>
-            </View>
-            <AnimatedNumber
-              value={monthlyTotals.income}
-              fontSize={15}
-              lineHeight={18}
-              prefix="₹"
-              suffix=""
-              textStyle={styles.tileAmount}
-            />
-            <Text style={[styles.tileChange, { color: Colors.income }]}>
-              {monthlyTotals.income > 0 ? 'This month' : 'No inflow'}
+        {/* ─── Edit Mode Banner ─── */}
+        {isEditMode && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.editModeBanner}>
+            <Sparkles size={14} color={Colors.chartreuse} />
+            <Text style={styles.editModeBannerText}>
+              Customizing Dashboard • Tap 📌 to pin, arrows to order, ✕ to hide
             </Text>
-          </View>
-
-          <View style={styles.summaryTile}>
-            <View style={styles.tileHeader}>
-              <TrendingDown size={12} color={Colors.expense} />
-              <Text style={styles.tileLabel}>EXPENSES</Text>
-            </View>
-            <AnimatedNumber
-              value={monthlyTotals.expense}
-              fontSize={15}
-              lineHeight={18}
-              prefix="₹"
-              suffix=""
-              textStyle={{ ...styles.tileAmount, color: Colors.expense }}
-            />
-            <Text style={[styles.tileChange, { color: Colors.expense }]}>
-              {monthlyTotals.expense > 0 ? `${categorySpends.length} categories` : '0 logs'}
-            </Text>
-          </View>
-
-          <View style={styles.summaryTile}>
-            <View style={styles.tileHeader}>
-              <Sparkles size={12} color={Colors.secondaryFixed} />
-              <Text style={styles.tileLabel}>SAVED</Text>
-            </View>
-            <AnimatedNumber
-              value={monthlyTotals.saved}
-              fontSize={15}
-              lineHeight={18}
-              prefix="₹"
-              suffix=""
-              textStyle={{ ...styles.tileAmount, color: Colors.secondaryFixed }}
-            />
-            <Text style={[styles.tileChange, { color: Colors.secondaryFixed }]}>
-              {monthlyTotals.saved > 0 ? 'Net savings' : 'Net zero'}
-            </Text>
-          </View>
-        </Animated.View>
-
-        {/* ─── Category Burn & Donut Chart ─── */}
-        <Animated.View
-          entering={FadeInDown.duration(600).delay(300)}
-          style={styles.card}
-        >
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Category Burn</Text>
-            <Text style={styles.cardSubtextRight}>SEPTEMBER 2026</Text>
-          </View>
-
-          {/* SVG Segmented Donut */}
-          <CategoryDonut
-            categories={donutData}
-            totalSpend={monthlyTotals.expense}
-            size={180}
-            strokeWidth={22}
-          />
-
-          {/* Category Chips Grid */}
-          {donutData.length === 0 ? (
-            <View style={styles.emptyDonutBox}>
-              <Text style={styles.emptyDonutText}>
-                No category expenses logged this month
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.categoryPills}>
-              {donutData.slice(0, 6).map((cat) => (
-                <View key={cat.categoryId} style={styles.categoryPill}>
-                  <View style={[styles.categoryDot, { backgroundColor: cat.categoryColor }]} />
-                  <Text style={styles.categoryPillText} numberOfLines={1}>
-                    {cat.categoryName.split(' ')[0]} {cat.percentage}%
-                  </Text>
-                  <Text style={styles.categoryPillAmount}>
-                    ₹{cat.total.toLocaleString('en-IN')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </Animated.View>
-
-        {/* ─── Dashboard Note Block (Scratchpad - Phase 3.8) ─── */}
-        <Animated.View entering={FadeInDown.duration(600).delay(350)}>
-          <DashboardNoteBlock />
-        </Animated.View>
-
-        {/* ─── Credit Cards Snapshot ─── */}
-        {creditCards.length > 0 && (
-          <Animated.View
-            entering={FadeInDown.duration(600).delay(400)}
-            style={styles.card}
-          >
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderLeft}>
-                <CreditCard size={16} color={Colors.onSurface} />
-                <Text style={styles.cardTitle}>Cards Snapshot</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => onNavigateTab?.(3)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.linkText}>Manage {'>'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {creditCards.map((card) => {
-              const outstanding = CreditCardRepository.getCardOutstanding(card.id);
-              const util = card.credit_limit > 0 ? Math.round((outstanding / card.credit_limit) * 100) : 0;
-              return (
-                <View key={card.id} style={styles.creditCardRow}>
-                  <View style={styles.cardLogoBox}>
-                    <CreditCard size={18} color={card.color} />
-                  </View>
-                  <View style={styles.creditCardInfo}>
-                    <Text style={styles.creditCardName}>{card.name}</Text>
-                    <Text style={styles.creditCardSub}>
-                      Limit ₹{card.credit_limit.toLocaleString('en-IN')} • Resets {card.cycle_reset_day}th
-                    </Text>
-                  </View>
-                  <View style={styles.creditCardRight}>
-                    <Text style={styles.creditCardAmount}>
-                      ₹{outstanding.toLocaleString('en-IN')}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.creditCardUtil,
-                        { color: util > 30 ? Colors.warning : Colors.income },
-                      ]}
-                    >
-                      {util}% utilized
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
           </Animated.View>
         )}
 
-        {/* ─── Recent Activity Feed ─── */}
-        <Animated.View
-          entering={FadeInDown.duration(600).delay(500)}
-          style={styles.card}
-        >
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Recent Activity</Text>
-            <TouchableOpacity
-              onPress={() => onNavigateTab?.(1)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkText}>All {'>'}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* ─── Modular Dashboard Cards ─── */}
+        {visibleCards.map((c, idx) => (
+          <DashboardCardWrapper
+            key={c.cardId}
+            cardId={c.cardId}
+            pinned={c.pinned}
+            order={c.order}
+            isFirst={idx === 0}
+            isLast={idx === visibleCards.length - 1}
+          >
+            <DashboardCardRenderer
+              cardId={c.cardId}
+              onNavigateTab={onNavigateTab}
+              onNavigateAnalytics={(tab) => router.push({ pathname: '/analytics' as any, params: { tab } })}
+              onTransactionLogged={refreshFinancials}
+              budgetAlerts={budgetAlerts}
+            />
+          </DashboardCardWrapper>
+        ))}
 
-          {recentTransactions.length === 0 ? (
-            <View style={styles.emptyRecentBox}>
-              <Text style={styles.emptyRecentText}>No transactions recorded yet</Text>
-            </View>
-          ) : (
-            recentTransactions.map((tx) => {
-            const isIncome = tx.type === 'income';
-            return (
-              <View key={tx.id} style={styles.txRow}>
-                <View
-                  style={[
-                    styles.txIconCircle,
-                    {
-                      backgroundColor: isIncome
-                        ? 'rgba(0, 230, 118, 0.12)'
-                        : 'rgba(255, 82, 82, 0.12)',
-                    },
-                  ]}
-                >
-                  <CategoryIcon
-                    name={isIncome ? 'Briefcase' : 'ShoppingBag'}
-                    size={18}
-                    color={isIncome ? Colors.income : Colors.expense}
-                  />
-                </View>
-
-                <View style={styles.txInfo}>
-                  <Text style={styles.txTitle}>{tx.note || 'Transaction'}</Text>
-                  <Text style={styles.txSub}>
-                    {tx.date} • {tx.time.slice(0, 5)}
-                  </Text>
-                </View>
-
-                <View style={styles.txRight}>
-                  <Text
-                    style={[
-                      styles.txAmount,
-                      { color: isIncome ? Colors.income : Colors.onSurface },
-                    ]}
-                  >
-                    {isIncome ? '+' : '−'}₹{tx.amount.toLocaleString('en-IN')}
-                  </Text>
-                  <Text style={styles.txTag}>
-                    {isIncome ? 'INFLOW' : 'DEBIT'}
-                  </Text>
-                </View>
-              </View>
-            );
-          })
-        )}
-        </Animated.View>
-
-        {/* Bottom padding for tab bar + FAB */}
-        <View style={{ height: 110 }} />
+        {/* Bottom padding for tab bar + customize dock */}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* ─── Interactive Month Calendar Modal (Phase 3.10) ─── */}
+      {/* ─── Floating Customize Button / Edit Mode Dock ─── */}
+      {!isEditMode ? (
+        <TouchableOpacity
+          style={styles.floatingCustomizeBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setPickerOpen(true);
+          }}
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            setEditMode(true);
+          }}
+          activeOpacity={0.85}
+        >
+          <LayoutGrid size={15} color={Colors.chartreuse} />
+          <Text style={styles.floatingCustomizeText}>Customize</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.floatingEditDock}>
+          <TouchableOpacity
+            style={styles.dockAddBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setPickerOpen(true);
+            }}
+            activeOpacity={0.8}
+          >
+            <Plus size={15} color={Colors.onSurface} />
+            <Text style={styles.dockAddText}>Add Cards</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.dockDoneBtn}
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setEditMode(false);
+            }}
+            activeOpacity={0.85}
+          >
+            <Check size={15} color={Colors.surface} />
+            <Text style={styles.dockDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ─── Dashboard Card Picker Bottom Sheet ─── */}
+      <DashboardCardPicker
+        visible={isPickerOpen}
+        onClose={() => setPickerOpen(false)}
+      />
+
+      {/* ─── Interactive Month Calendar Modal ─── */}
       <MonthCalendarModal
         visible={calendarVisible}
         onClose={() => setCalendarVisible(false)}
@@ -609,217 +480,91 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  summaryRow: {
+  editModeBanner: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(212, 255, 50, 0.12)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: Shapes.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 255, 50, 0.3)',
   },
-  summaryTile: {
+  editModeBannerText: {
+    ...Typography.bodySm,
+    fontSize: 11,
+    color: Colors.chartreuse,
+    fontWeight: '600',
     flex: 1,
-    backgroundColor: Colors.surfaceContainerLow,
-    borderRadius: Shapes.xl,
-    padding: Spacing.cardPadding,
+  },
+  floatingCustomizeBtn: {
+    position: 'absolute',
+    bottom: 96,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surfaceContainerHighest,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 255, 50, 0.35)',
+    ...Elevation.high,
+    zIndex: 90,
+  },
+  floatingCustomizeText: {
+    ...Typography.bodySmMedium,
+    color: Colors.chartreuse,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  floatingEditDock: {
+    position: 'absolute',
+    bottom: 96,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.surfaceContainerHighest,
+    padding: 6,
+    borderRadius: Shapes.pill,
     borderWidth: 1,
     borderColor: Colors.strokeMedium,
-    gap: 3,
+    ...Elevation.high,
+    zIndex: 90,
   },
-  tileHeader: {
+  dockAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  tileLabel: {
-    ...Typography.labelCaps,
-    fontSize: 9,
-    color: Colors.onSurfaceVariant,
-  },
-  tileAmount: {
-    fontFamily: FontFamily.numericBold,
-    fontSize: 15,
-    lineHeight: 18,
-    color: Colors.onSurface,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  tileChange: {
-    ...Typography.bodySm,
-    fontSize: 10,
-  },
-  card: {
-    backgroundColor: Colors.surfaceContainerLow,
-    borderRadius: Shapes.xl,
-    padding: Spacing.cardPadding,
-    borderWidth: 1,
-    borderColor: Colors.strokeMedium,
-    gap: Spacing.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cardTitle: {
-    ...Typography.bodyMdMedium,
-    color: Colors.onSurface,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  cardSubtextRight: {
-    ...Typography.labelCaps,
-    color: Colors.onSurfaceVariant,
-    fontSize: 10,
-  },
-  linkText: {
-    ...Typography.bodySmMedium,
-    color: Colors.primaryFixed,
-    fontSize: 12,
-  },
-  categoryPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: Spacing.xs,
-  },
-  categoryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
     backgroundColor: Colors.surfaceContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: Shapes.pill,
     borderWidth: 1,
     borderColor: Colors.strokeSubtle,
   },
-  categoryDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  categoryPillText: {
-    ...Typography.bodySm,
-    fontSize: 11,
+  dockAddText: {
+    ...Typography.bodySmMedium,
     color: Colors.onSurface,
+    fontSize: 12,
+    fontWeight: '600',
   },
-  categoryPillAmount: {
-    fontFamily: FontFamily.numericMedium,
-    fontSize: 10,
-    color: Colors.onSurfaceVariant,
-    fontVariant: ['tabular-nums'],
-  },
-  creditCardRow: {
+  dockDoneBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: 4,
+    gap: 4,
+    backgroundColor: Colors.chartreuse,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: Shapes.pill,
   },
-  cardLogoBox: {
-    width: 36,
-    height: 36,
-    borderRadius: Shapes.md,
-    backgroundColor: Colors.surfaceContainerHigh,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
-  },
-  creditCardInfo: {
-    flex: 1,
-    gap: 1,
-  },
-  creditCardName: {
-    ...Typography.bodyMdMedium,
-    color: Colors.onSurface,
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  creditCardSub: {
-    ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    fontSize: 11,
-  },
-  creditCardRight: {
-    alignItems: 'flex-end',
-    gap: 1,
-  },
-  creditCardAmount: {
-    fontFamily: FontFamily.numericBold,
-    fontSize: 13,
-    color: Colors.onSurface,
-    fontVariant: ['tabular-nums'],
-  },
-  creditCardUtil: {
-    ...Typography.labelCaps,
-    fontSize: 9,
+  dockDoneText: {
+    ...Typography.bodySmMedium,
+    color: Colors.surface,
+    fontSize: 12,
     fontWeight: '700',
-  },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.strokeSubtle,
-  },
-  txIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  txInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  txTitle: {
-    ...Typography.bodyMdMedium,
-    color: Colors.onSurface,
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  txSub: {
-    ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    fontSize: 11,
-  },
-  txRight: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  txAmount: {
-    fontFamily: FontFamily.numericBold,
-    fontSize: 13,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  txTag: {
-    ...Typography.labelCaps,
-    fontSize: 9,
-    color: Colors.onSurfaceVariant,
-  },
-  emptyRecentBox: {
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyRecentText: {
-    ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    fontStyle: 'italic',
-  },
-  emptyDonutBox: {
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyDonutText: {
-    ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    fontStyle: 'italic',
   },
 });

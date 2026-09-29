@@ -241,7 +241,84 @@ export const BudgetRepository = {
        ORDER BY display_order ASC, name ASC;`
     );
   },
+
+  /**
+   * Tier 4, Feature 13: Daily Budget Micro-Alerts
+   * Evaluates categories crossing 75%, 90%, and 100% thresholds with projected runway.
+   */
+  checkBudgetThresholds(yearMonth?: string): BudgetMicroAlert[] {
+    const ym = yearMonth || getCurrentYearMonth();
+    const [y, m] = ym.split('-').map(Number);
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() === y && now.getMonth() + 1 === m;
+    const totalDays = new Date(y, m, 0).getDate();
+    const daysPassed = isCurrentMonth ? now.getDate() : totalDays;
+    const daysRemaining = Math.max(1, totalDays - daysPassed);
+
+    const budgets = this.getAllWithProgress(ym);
+    const alerts: BudgetMicroAlert[] = [];
+
+    budgets.forEach((b) => {
+      if (b.budgetAmount <= 0) return;
+      const burnPercentage = Math.round((b.spentAmount / b.budgetAmount) * 100);
+      if (burnPercentage < 75) return;
+
+      const remainingAmount = Math.max(0, b.budgetAmount - b.spentAmount);
+      const safeDailyAllowance = Math.round(remainingAmount / daysRemaining);
+
+      let level: 'caution' | 'critical' | 'exceeded' = 'caution';
+      let message = '';
+
+      if (burnPercentage >= 100) {
+        level = 'exceeded';
+        const overAmt = Math.round(b.spentAmount - b.budgetAmount);
+        message = `🚨 ${b.categoryName} exceeded budget by ₹${overAmt.toLocaleString('en-IN')}`;
+      } else if (burnPercentage >= 90) {
+        level = 'critical';
+        message = `⚠️ ${b.categoryName} nearly exhausted: ₹${remainingAmount.toLocaleString('en-IN')} left for ${daysRemaining} days (₹${safeDailyAllowance}/day)`;
+      } else {
+        level = 'caution';
+        message = `⚡ Heads up: ${b.categoryName} is at ${burnPercentage}% of budget with ${daysRemaining} days left`;
+      }
+
+      alerts.push({
+        budgetId: b.id,
+        categoryId: b.categoryId,
+        categoryName: b.categoryName,
+        categoryColor: b.categoryColor,
+        categoryIcon: b.categoryIcon,
+        budgetAmount: b.budgetAmount,
+        spentAmount: b.spentAmount,
+        burnPercentage,
+        remainingAmount,
+        level,
+        message,
+        daysRemaining,
+        safeDailyAllowance,
+      });
+    });
+
+    // Sort: exceeded first, then critical, then caution
+    const levelOrder = { exceeded: 0, critical: 1, caution: 2 };
+    return alerts.sort((a, b) => levelOrder[a.level] - levelOrder[b.level]);
+  },
 };
+
+export interface BudgetMicroAlert {
+  budgetId: string;
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  categoryIcon: string;
+  budgetAmount: number;
+  spentAmount: number;
+  burnPercentage: number;
+  remainingAmount: number;
+  level: 'caution' | 'critical' | 'exceeded';
+  message: string;
+  daysRemaining: number;
+  safeDailyAllowance: number;
+}
 
 function getCurrentYearMonth(): string {
   const now = new Date();

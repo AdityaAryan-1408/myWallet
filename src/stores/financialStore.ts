@@ -103,6 +103,9 @@ interface FinancialState {
   markAllNotificationsAsRead: () => void;
   dismissNotification: (id: string) => void;
   refreshNotifications: () => void;
+  // Pager Lock for Nested Horizontal Scrolls
+  isPagerScrollEnabled: boolean;
+  setPagerScrollEnabled: (enabled: boolean) => void;
 }
 
 export const useFinancialStore = create<FinancialState>((set, get) => ({
@@ -111,6 +114,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   avatarBadge: '🚀',
   currency: 'INR',
   themeMode: 'dark',
+  isPagerScrollEnabled: true,
+  setPagerScrollEnabled: (enabled: boolean) => set({ isPagerScrollEnabled: enabled }),
   availableToSpend: 0,
   totalBankCashBalance: 0,
   totalAvailableBankCashBalance: 0,
@@ -503,9 +508,6 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const debtSummary = DebtRepository.getDebtSummary();
       const inAppNotifications = NotificationRepository.getAll();
       const unreadNotificationsCount = NotificationRepository.getUnreadCount();
-
-      // Background notification sync
-      NotificationService.syncAllReminders().catch(() => {});
 
       const totalBankCashBalance = AccountRepository.getTotalBankCashBalance();
       const totalAvailableBankCashBalance = AccountRepository.getTotalAvailableBankCashBalance();

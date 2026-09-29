@@ -45,7 +45,13 @@ export type {
   FinancialWrappedPersonality,
   MonthlyFinancialDigestData,
   MonthlyDigestTopCategory,
+  DayTransactionDetail,
+  IncomeVsExpenseRatioData,
 } from './analyticsRepository';
+export type { BudgetMicroAlert } from './budgetRepository';
+export type { CategoryTrendItem, CategoryMonthSpend } from './categoryRepository';
+export { TemplateRepository, getCurrentTimeContext } from './templateRepository';
+export type { TransactionTemplate } from './templateRepository';
 export { BackupRepository } from './backupRepository';
 export type { BackupPayload, StorageStats, CloudSyncStatus } from './backupRepository';
 export { NotificationRepository } from './notificationRepository';
@@ -58,3 +64,4 @@ export type {
   SavingsAutopilot,
   VelocityRadar,
 } from './aiRepository';
+

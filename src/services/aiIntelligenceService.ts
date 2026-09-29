@@ -93,37 +93,14 @@ export const AiIntelligenceService = {
   },
 
   /**
-   * Triggers an immediate sample anomaly notification (in-app + system) for instant test verification.
+   * Purges any stale test/simulated anomaly notifications from the in-app notifications table.
+   * Called at app launch to clean up artifacts left by removed debug features.
    */
-  async triggerTestAnomalyNotification(): Promise<void> {
+  purgeTestNotifications(): void {
     try {
-      const inAppId = `anomaly_test_${Date.now()}`;
-      const title = '⚠️ Spending Anomaly Detected';
-      const body = '₹8,500 at Electronics is 3.8× your typical shopping spend (median ₹2,200).';
-
-      // 1. Create In-App Notification entry
-      NotificationRepository.create({
-        id: inAppId,
-        type: 'system',
-        title,
-        body,
-        entity_type: 'system',
-        action_type: 'view_screen',
-        action_payload: '/intelligence',
-        is_read: 0,
-        is_dismissed: 0,
-      });
-
-      // 2. Fire immediate Android system notification
-      await NotificationService.postSystemNotification({
-        id: inAppId,
-        title,
-        body,
-        channelId: 'channel_credit_cards',
-        data: { type: 'anomaly', test: true },
-      });
+      NotificationRepository.purgeFakeTestNotifications();
     } catch (e) {
-      console.warn('Error triggering test anomaly notification:', e);
+      console.warn('Error purging test notifications:', e);
     }
   },
 };

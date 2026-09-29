@@ -141,4 +141,38 @@ export const NotificationRepository = {
       console.warn('Error clearing notifications:', e);
     }
   },
+
+  /**
+   * Dismisses all in-app notifications whose id starts with the given prefix.
+   * Used to purge stale test/debug notifications.
+   */
+  dismissByIdPrefix(prefix: string): void {
+    try {
+      const db = getDatabase();
+      db.runSync(
+        'DELETE FROM in_app_notifications WHERE id LIKE ?;',
+        [`${prefix}%`]
+      );
+    } catch (e) {
+      console.warn('Error dismissing by id prefix:', e);
+    }
+  },
+
+  /**
+   * Specifically purges any stale mock/test anomaly notifications
+   * (e.g. the hardcoded ₹8,500 Electronics test alert) from SQLite.
+   */
+  purgeFakeTestNotifications(): void {
+    try {
+      const db = getDatabase();
+      db.runSync(
+        `DELETE FROM in_app_notifications 
+         WHERE id LIKE 'anomaly_test_%' 
+            OR body LIKE '%8,500 at Electronics%'
+            OR id LIKE 'test_%';`
+      );
+    } catch (e) {
+      console.warn('Error purging fake test notifications:', e);
+    }
+  },
 };

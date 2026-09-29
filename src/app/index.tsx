@@ -22,6 +22,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { BottomTabBar } from '@/components/navigation/BottomTabBar';
 import { FAB } from '@/components/navigation/FAB';
 import { Colors } from '@/theme';
+import { useFinancialStore } from '@/stores';
 import {
   HomeScreen,
   ActivityScreen,
@@ -34,6 +35,7 @@ export default function MainTabsPagerScreen() {
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const isPagerScrollEnabled = useFinancialStore((s) => s.isPagerScrollEnabled);
 
   const [activeTab, setActiveTab] = useState(0);
   const activeTabRef = useRef(0);
@@ -118,6 +120,7 @@ export default function MainTabsPagerScreen() {
         ref={scrollViewRef}
         horizontal
         pagingEnabled
+        scrollEnabled={isPagerScrollEnabled}
         showsHorizontalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"

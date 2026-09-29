@@ -133,23 +133,6 @@ export default function IntelligenceScreen() {
     }
   };
 
-  const handleSimulateAnomalyAlert = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsSendingAlert(true);
-    try {
-      await AiIntelligenceService.triggerTestAnomalyNotification();
-      loadAiData();
-      Alert.alert(
-        'Anomaly Alert Triggered! ⚠️',
-        'A simulated high-spend statistical anomaly has been broadcast to your Android status bar and saved in notifications.'
-      );
-    } catch {
-      Alert.alert('Error', 'Could not fire anomaly alert.');
-    } finally {
-      setIsSendingAlert(false);
-    }
-  };
-
   const handleSaveRoundUpsToReservation = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!autopilot) return;
@@ -558,16 +541,6 @@ export default function IntelligenceScreen() {
                 Real-time mathematical filter detects expenses exceeding 2.5× the typical category median.
                 Instant Android and in-app alerts are dispatched immediately upon logging.
               </Text>
-
-              <TouchableOpacity
-                style={styles.simulateBtn}
-                onPress={handleSimulateAnomalyAlert}
-                disabled={isSendingAlert}
-                activeOpacity={0.7}
-              >
-                <Bell size={14} color={Colors.warning} />
-                <Text style={styles.simulateBtnText}>Simulate Test Anomaly Notification</Text>
-              </TouchableOpacity>
             </View>
 
             {/* Anomalies List */}

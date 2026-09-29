@@ -10,7 +10,7 @@
  * - Month-over-Month Category Shift & Delta Comparison
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
@@ -67,6 +67,8 @@ import {
   FinancialWrappedModal,
   MerchantIntelligenceCard,
   MonthlyDigestCard,
+  CategorySparklinesCard,
+  IncomeExpenseRatioCard,
 } from '@/components/analytics';
 
 type AnalyticsTab =
@@ -80,10 +82,17 @@ type AnalyticsTab =
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { tab: paramTab } = useLocalSearchParams<{ tab?: AnalyticsTab }>();
   const { monthlyTotals } = useFinancialStore();
 
-  const [activeTab, setActiveTab] = useState<AnalyticsTab>('resilience');
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>(paramTab || 'resilience');
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (paramTab && ['resilience', 'overview', 'merchants', 'digest', 'habits', 'comparison'].includes(paramTab)) {
+      setActiveTab(paramTab);
+    }
+  }, [paramTab]);
 
   // Factor Detail Sheet State (Tier 2: Interactive Health Score)
   const [selectedFactor, setSelectedFactor] = useState<HealthScoreFactor | null>(null);
@@ -176,6 +185,16 @@ export default function AnalyticsScreen() {
 
   const categoriesWithStats = useMemo(() => {
     return CategoryRepository.getCategoriesWithStats('expense', currentYearMonth);
+  }, [currentYearMonth, refreshing]);
+
+  // Tier 4, Feature 11: 6-Month Category Spending Curves
+  const categoryTrends = useMemo(() => {
+    return CategoryRepository.getCategory6MonthTrends('expense');
+  }, [refreshing]);
+
+  // Tier 4, Feature 14: Income vs Expense Ratio & Living Savings Rate
+  const incomeVsExpenseRatio = useMemo(() => {
+    return AnalyticsRepository.getIncomeVsExpenseRatio(currentYearMonth);
   }, [currentYearMonth, refreshing]);
 
   // Donut data formatted for CategoryDonut
@@ -410,6 +429,12 @@ export default function AnalyticsScreen() {
         {/* ─── TAB 2: OVERVIEW (Spend & Drill-down) ────────────────── */}
         {activeTab === 'overview' && (
           <Animated.View entering={FadeIn.duration(400)} style={styles.sectionGap}>
+            {/* Income vs Expense Ratio Tracker (Tier 4, Feature 14) */}
+            <IncomeExpenseRatioCard
+              data={incomeVsExpenseRatio}
+              onTargetUpdated={() => setRefreshing(true)}
+            />
+
             {/* Donut Chart Card */}
             <View style={styles.chartCard}>
               <View style={styles.chartHeader}>
@@ -585,6 +610,9 @@ export default function AnalyticsScreen() {
                   })}
               </View>
             </View>
+
+            {/* Category Trend Sparklines (Tier 4, Feature 11) */}
+            <CategorySparklinesCard trends={categoryTrends} />
           </Animated.View>
         )}
 

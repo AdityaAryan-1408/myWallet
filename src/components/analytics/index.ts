@@ -12,3 +12,5 @@ export { FactorDetailSheet } from './FactorDetailSheet';
 export { FinancialWrappedModal } from './FinancialWrappedModal';
 export { MerchantIntelligenceCard } from './MerchantIntelligenceCard';
 export { MonthlyDigestCard } from './MonthlyDigestCard';
+export { CategorySparklinesCard } from './CategorySparklinesCard';
+export { IncomeExpenseRatioCard } from './IncomeExpenseRatioCard';
