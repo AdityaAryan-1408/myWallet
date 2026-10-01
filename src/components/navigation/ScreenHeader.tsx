@@ -8,7 +8,7 @@
  * - Profile avatar
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -33,7 +33,7 @@ interface ScreenHeaderProps {
 export function ScreenHeader({
   subtitle,
   showMonthPicker = true,
-  monthLabel = 'Sep 2026',
+  monthLabel,
   showBack = false,
   onBackPress,
   onMonthPress,
@@ -43,6 +43,10 @@ export function ScreenHeader({
   const insets = useSafeAreaInsets();
   const { userName, avatarBadge, unreadNotificationsCount, creditCards } = useFinancialStore();
   const avatarInitial = userName ? userName.trim()[0]?.toUpperCase() || 'A' : 'A';
+
+  const displayMonthLabel = useMemo(() => {
+    return monthLabel || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }, [monthLabel]);
 
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
   const [selectedCardToPay, setSelectedCardToPay] = useState<CreditCard | null>(null);
@@ -96,7 +100,7 @@ export function ScreenHeader({
               onPress={onMonthPress}
             >
               <Calendar size={13} color={Colors.onSurfaceVariant} />
-              <Text style={styles.monthText}>{monthLabel}</Text>
+              <Text style={styles.monthText}>{displayMonthLabel}</Text>
               <ChevronDown size={13} color={Colors.onSurfaceVariant} />
             </TouchableOpacity>
           )}

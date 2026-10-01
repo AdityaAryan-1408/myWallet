@@ -177,14 +177,148 @@ export const LightColors: typeof DarkColors = {
   categoryOther: '#64748B',
 };
 
+export type ThemeMode = 'dark' | 'light' | 'amethyst' | 'sapphire';
+
+export const AmethystColors: typeof DarkColors = {
+  ...DarkColors,
+  // ─── Surface Architecture (Midnight Amethyst) ───
+  surface: '#0D0B14',
+  surfaceDim: '#0D0B14',
+  surfaceBright: '#302A42',
+  surfaceContainerLowest: '#08060D',
+  surfaceContainerLow: '#161322',
+  surfaceContainer: '#1D192C',
+  surfaceContainerHigh: '#28233C',
+  surfaceContainerHighest: '#342E4E',
+
+  // ─── On-Surface ───
+  onSurface: '#F3E8FF',
+  onSurfaceVariant: '#A89EC2',
+  inverseSurface: '#F3E8FF',
+  inverseOnSurface: '#1D192C',
+
+  // ─── Primary Accent: Electric Violet / Amethyst ───
+  primary: '#FFFFFF',
+  onPrimary: '#2D0052',
+  primaryContainer: '#A855F7',
+  onPrimaryContainer: '#3B0764',
+  primaryFixed: '#A855F7',
+  primaryFixedDim: '#9333EA',
+  inversePrimary: '#7E22CE',
+  surfaceTint: '#A855F7',
+
+  // ─── Secondary Accent: Frosted Lavender ───
+  secondary: '#E0AAFF',
+  onSecondary: '#37005B',
+  secondaryContainer: '#C084FC',
+  onSecondaryContainer: '#581C87',
+  secondaryFixed: '#E0AAFF',
+  secondaryFixedDim: '#D8B4FE',
+
+  // ─── Tertiary Accent: Soft Orchid ───
+  tertiary: '#F0ABFC',
+  onTertiary: '#4A044E',
+  tertiaryContainer: '#E879F9',
+  onTertiaryContainer: '#701A75',
+  tertiaryFixed: '#F0ABFC',
+  tertiaryFixedDim: '#E879F9',
+
+  // ─── Accent Glows (Vivid Violet) ───
+  chartreuse: '#A855F7',
+  chartreuseGlow: 'rgba(168, 85, 247, 0.25)',
+  chartreuseWash: 'rgba(168, 85, 247, 0.15)',
+  chartreuseSubtle: 'rgba(168, 85, 247, 0.10)',
+
+  // ─── Outline & Strokes ───
+  outline: '#8B7B9E',
+  outlineVariant: '#433756',
+  strokeSubtle: 'rgba(168, 85, 247, 0.08)',
+  strokeLight: 'rgba(168, 85, 247, 0.12)',
+  strokeMedium: 'rgba(168, 85, 247, 0.18)',
+  strokeBright: 'rgba(168, 85, 247, 0.28)',
+};
+
+export const SapphireColors: typeof DarkColors = {
+  ...DarkColors,
+  // ─── Surface Architecture (Sapphire Horizon) ───
+  surface: '#080D1A',
+  surfaceDim: '#080D1A',
+  surfaceBright: '#203152',
+  surfaceContainerLowest: '#050812',
+  surfaceContainerLow: '#0E172B',
+  surfaceContainer: '#13203A',
+  surfaceContainerHigh: '#1C2E52',
+  surfaceContainerHighest: '#273E6D',
+
+  // ─── On-Surface ───
+  onSurface: '#E0F2FE',
+  onSurfaceVariant: '#8BA3C7',
+  inverseSurface: '#E0F2FE',
+  inverseOnSurface: '#13203A',
+
+  // ─── Primary Accent: Electric Cyan / Glaze Blue ───
+  primary: '#FFFFFF',
+  onPrimary: '#00293D',
+  primaryContainer: '#00D2FF',
+  onPrimaryContainer: '#003B57',
+  primaryFixed: '#00D2FF',
+  primaryFixedDim: '#00B4D8',
+  inversePrimary: '#0284C7',
+  surfaceTint: '#00D2FF',
+
+  // ─── Secondary Accent: Sky Blue ───
+  secondary: '#60A5FA',
+  onSecondary: '#082F49',
+  secondaryContainer: '#38BDF8',
+  onSecondaryContainer: '#075985',
+  secondaryFixed: '#60A5FA',
+  secondaryFixedDim: '#38BDF8',
+
+  // ─── Tertiary Accent: Ice Indigo ───
+  tertiary: '#93C5FD',
+  onTertiary: '#1E3A8A',
+  tertiaryContainer: '#60A5FA',
+  onTertiaryContainer: '#1D4ED8',
+  tertiaryFixed: '#93C5FD',
+  tertiaryFixedDim: '#60A5FA',
+
+  // ─── Accent Glows (Electric Cyan) ───
+  chartreuse: '#00D2FF',
+  chartreuseGlow: 'rgba(0, 210, 255, 0.22)',
+  chartreuseWash: 'rgba(0, 210, 255, 0.14)',
+  chartreuseSubtle: 'rgba(0, 210, 255, 0.08)',
+
+  // ─── Outline & Strokes ───
+  outline: '#647D9E',
+  outlineVariant: '#2A4363',
+  strokeSubtle: 'rgba(0, 210, 255, 0.06)',
+  strokeLight: 'rgba(0, 210, 255, 0.10)',
+  strokeMedium: 'rgba(0, 210, 255, 0.16)',
+  strokeBright: 'rgba(0, 210, 255, 0.26)',
+};
+
 import { NativeModules, Platform } from 'react-native';
 
+export function getThemePalette(mode: ThemeMode) {
+  switch (mode) {
+    case 'light':
+      return LightColors;
+    case 'amethyst':
+      return AmethystColors;
+    case 'sapphire':
+      return SapphireColors;
+    case 'dark':
+    default:
+      return DarkColors;
+  }
+}
+
 // Check stored theme synchronously at module load
-export function getInitialTheme(): 'dark' | 'light' {
+export function getInitialTheme(): ThemeMode {
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && window.localStorage) {
       const saved = window.localStorage.getItem('mywallet_theme_mode');
-      if (saved === 'light') return 'light';
+      if (saved === 'light' || saved === 'amethyst' || saved === 'sapphire') return saved;
       if (saved === 'dark') return 'dark';
       if (saved === 'system' && window.matchMedia) {
         return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -195,7 +329,9 @@ export function getInitialTheme(): 'dark' | 'light' {
     try {
       if (NativeModules.AppTheme?.getTheme) {
         const nativeTheme = NativeModules.AppTheme.getTheme();
-        if (nativeTheme === 'light') return 'light';
+        if (nativeTheme === 'light' || nativeTheme === 'amethyst' || nativeTheme === 'sapphire') {
+          return nativeTheme;
+        }
         if (nativeTheme === 'dark') return 'dark';
       }
     } catch {
@@ -207,7 +343,9 @@ export function getInitialTheme(): 'dark' | 'light' {
       const { getDatabase } = require('../db/client');
       const db = getDatabase();
       const row = db.getFirstSync("SELECT value FROM user_settings WHERE key = 'theme_mode';");
-      if (row?.value === 'light') return 'light';
+      if (row?.value === 'light' || row?.value === 'amethyst' || row?.value === 'sapphire') {
+        return row.value;
+      }
     } catch {
       // fallback
     }
@@ -215,13 +353,13 @@ export function getInitialTheme(): 'dark' | 'light' {
   return 'dark';
 }
 
-const activeTheme = getInitialTheme();
+export const activeTheme: ThemeMode = getInitialTheme();
 
 /**
  * Design system color tokens for the active theme.
  */
 export const Colors = {
-  ...(activeTheme === 'light' ? LightColors : DarkColors),
+  ...getThemePalette(activeTheme),
 };
 
 export type ColorToken = keyof typeof DarkColors;

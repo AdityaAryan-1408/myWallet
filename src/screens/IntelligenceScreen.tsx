@@ -41,6 +41,8 @@ import {
   Coins,
   Target,
   Zap,
+  Layers,
+  Clock,
 } from 'lucide-react-native';
 
 import {
@@ -53,7 +55,11 @@ import {
   VelocityRadar,
   ReservationRepository,
 } from '@/repositories';
-import { AiIntelligenceService } from '@/services';
+import {
+  AiIntelligenceService,
+  CategoryBaselineInfo,
+  AnomalyAuditOutcome,
+} from '@/services';
 import { useFinancialStore } from '@/stores';
 import { Colors, FontFamily, Spacing, Shapes } from '@/theme';
 
@@ -76,6 +82,8 @@ export default function IntelligenceScreen() {
   const [recurring, setRecurring] = useState<RecurringPattern[]>([]);
   const [autopilot, setAutopilot] = useState<SavingsAutopilot | null>(null);
   const [velocity, setVelocity] = useState<VelocityRadar | null>(null);
+  const [categoryBaselines, setCategoryBaselines] = useState<CategoryBaselineInfo[]>([]);
+  const [lastAuditOutcome, setLastAuditOutcome] = useState<AnomalyAuditOutcome | null>(null);
 
   const loadAiData = useCallback(() => {
     try {
@@ -85,6 +93,8 @@ export default function IntelligenceScreen() {
       const rec = AiRepository.detectRecurringPatterns();
       const ap = AiRepository.getSavingsAutopilotData();
       const vel = AiRepository.getVelocityRadar();
+      const baselines = AiIntelligenceService.getCategoryBaselines();
+      const lastOutcome = AiIntelligenceService.getLastAnomalyOutcome();
 
       setReportCard(rc);
       setAnomalies(anom);
@@ -92,6 +102,8 @@ export default function IntelligenceScreen() {
       setRecurring(rec);
       setAutopilot(ap);
       setVelocity(vel);
+      setCategoryBaselines(baselines);
+      setLastAuditOutcome(lastOutcome);
     } catch (e) {
       console.warn('Failed to compute Zenith AI insights:', e);
     }
@@ -541,6 +553,171 @@ export default function IntelligenceScreen() {
                 Real-time mathematical filter detects expenses exceeding 2.5× the typical category median.
                 Instant Android and in-app alerts are dispatched immediately upon logging.
               </Text>
+            </View>
+
+            {/* 1. Baseline Requirements (Phase 3.7) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Target size={16} color={Colors.primaryFixed} />
+                <Text style={styles.cardHeaderTitle}>ANOMALY QUALIFICATION CRITERIA</Text>
+              </View>
+              <Text style={styles.cardDesc}>
+                To prevent noisy or false notifications, transactions must satisfy four strict mathematical gates before triggering a system alert:
+              </Text>
+              <View style={styles.rulesList}>
+                <View style={styles.ruleItem}>
+                  <View style={styles.ruleBadge}>
+                    <Text style={styles.ruleBadgeText}>1</Text>
+                  </View>
+                  <View style={styles.ruleContent}>
+                    <Text style={styles.ruleTitle}>Categorized Outflow</Text>
+                    <Text style={styles.ruleSubtitle}>Must be logged as an expense with a category assigned (income & transfers excluded).</Text>
+                  </View>
+                </View>
+                <View style={styles.ruleItem}>
+                  <View style={styles.ruleBadge}>
+                    <Text style={styles.ruleBadgeText}>2</Text>
+                  </View>
+                  <View style={styles.ruleContent}>
+                    <Text style={styles.ruleTitle}>Minimum Amount Filter</Text>
+                    <Text style={styles.ruleSubtitle}>Amount must be at least ₹300 to filter out routine small purchases.</Text>
+                  </View>
+                </View>
+                <View style={styles.ruleItem}>
+                  <View style={styles.ruleBadge}>
+                    <Text style={styles.ruleBadgeText}>3</Text>
+                  </View>
+                  <View style={styles.ruleContent}>
+                    <Text style={styles.ruleTitle}>Historical Baseline (≥ 2 Prior Expenses)</Text>
+                    <Text style={styles.ruleSubtitle}>At least two prior historical transactions in the same category are required to calculate a valid median.</Text>
+                  </View>
+                </View>
+                <View style={styles.ruleItem}>
+                  <View style={styles.ruleBadge}>
+                    <Text style={styles.ruleBadgeText}>4</Text>
+                  </View>
+                  <View style={styles.ruleContent}>
+                    <Text style={styles.ruleTitle}>Statistical Outlier (≥ 2.5× Median)</Text>
+                    <Text style={styles.ruleSubtitle}>Expense amount must exceed 2.5 times the category median to trigger outside-app alerts.</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* 2. Last Audit Evaluation Outcome (Phase 3.7) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Zap size={16} color={Colors.chartreuse} />
+                <Text style={styles.cardHeaderTitle}>LAST TRANSACTION AUDIT</Text>
+                {lastAuditOutcome && (
+                  <View
+                    style={[
+                      styles.auditStatusPill,
+                      lastAuditOutcome.status === 'scheduled'
+                        ? styles.auditStatusPillSuccess
+                        : lastAuditOutcome.status === 'delivery_failed'
+                        ? styles.auditStatusPillError
+                        : lastAuditOutcome.status === 'below_threshold'
+                        ? styles.auditStatusPillNeutral
+                        : styles.auditStatusPillWarning,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.auditStatusText,
+                        lastAuditOutcome.status === 'scheduled'
+                          ? styles.auditStatusTextSuccess
+                          : lastAuditOutcome.status === 'delivery_failed'
+                          ? styles.auditStatusTextError
+                          : lastAuditOutcome.status === 'below_threshold'
+                          ? styles.auditStatusTextNeutral
+                          : styles.auditStatusTextWarning,
+                      ]}
+                    >
+                      {lastAuditOutcome.status.replace('_', ' ').toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {lastAuditOutcome ? (
+                <View style={styles.auditOutcomeBody}>
+                  <Text style={styles.auditOutcomeNarrative}>{lastAuditOutcome.message}</Text>
+                  <View style={styles.auditMetricsGrid}>
+                    {lastAuditOutcome.amount !== undefined && (
+                      <View style={styles.auditMetricBox}>
+                        <Text style={styles.auditMetricLabel}>Amount</Text>
+                        <Text style={styles.auditMetricValue}>₹{Math.round(lastAuditOutcome.amount).toLocaleString('en-IN')}</Text>
+                      </View>
+                    )}
+                    {lastAuditOutcome.median !== undefined && (
+                      <View style={styles.auditMetricBox}>
+                        <Text style={styles.auditMetricLabel}>Cat. Median</Text>
+                        <Text style={styles.auditMetricValue}>₹{Math.round(lastAuditOutcome.median).toLocaleString('en-IN')}</Text>
+                      </View>
+                    )}
+                    {lastAuditOutcome.threshold !== undefined && (
+                      <View style={styles.auditMetricBox}>
+                        <Text style={styles.auditMetricLabel}>Trigger (2.5×)</Text>
+                        <Text style={styles.auditMetricValue}>₹{Math.round(lastAuditOutcome.threshold).toLocaleString('en-IN')}</Text>
+                      </View>
+                    )}
+                    <View style={styles.auditMetricBox}>
+                      <Text style={styles.auditMetricLabel}>Audited At</Text>
+                      <Text style={styles.auditMetricValue}>
+                        {new Date(lastAuditOutcome.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.auditEmptyText}>
+                  No transactions audited yet in this session. When you log or edit an expense, its anomaly qualification and statistical gate results will be displayed here live.
+                </Text>
+              )}
+            </View>
+
+            {/* 3. Category Baselines & Outlier Thresholds (Phase 3.7) */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Layers size={16} color={Colors.primaryFixed} />
+                <Text style={styles.cardHeaderTitle}>CATEGORY BASELINES & THRESHOLDS</Text>
+              </View>
+              <Text style={styles.cardDesc}>
+                Current medians and 2.5× anomaly triggers computed from your personal historical transactions:
+              </Text>
+
+              {categoryBaselines.length === 0 ? (
+                <Text style={styles.auditEmptyText}>No active expense categories found.</Text>
+              ) : (
+                <View style={styles.baselinesList}>
+                  {categoryBaselines.map((cat) => (
+                    <View key={cat.categoryId} style={styles.baselineRow}>
+                      <View style={styles.baselineLeft}>
+                        <View style={[styles.baselineDot, { backgroundColor: cat.categoryColor || Colors.primaryFixed }]} />
+                        <View>
+                          <Text style={styles.baselineCatName}>{cat.categoryName}</Text>
+                          <Text style={styles.baselineCatMeta}>
+                            {cat.historyCount} historical expense{cat.historyCount === 1 ? '' : 's'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.baselineRight}>
+                        <View style={styles.baselineStatsCol}>
+                          <Text style={styles.baselineThresholdText}>Trigger: ≥ ₹{cat.threshold.toLocaleString('en-IN')}</Text>
+                          <Text style={styles.baselineMedianText}>Median: ₹{cat.median.toLocaleString('en-IN')}</Text>
+                        </View>
+                        <View style={[styles.readinessPill, cat.isReady ? styles.readinessPillReady : styles.readinessPillPending]}>
+                          <Text style={[styles.readinessPillText, cat.isReady ? styles.readinessPillTextReady : styles.readinessPillTextPending]}>
+                            {cat.isReady ? 'ACTIVE' : 'NEEDS DATA'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
 
             {/* Anomalies List */}
@@ -1718,5 +1895,203 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.headingBold,
     fontSize: 11,
     color: Colors.chartreuse,
+  },
+
+  // Phase 3.7 Anomaly UX Styles
+  rulesList: {
+    gap: 8,
+    marginTop: 8,
+  },
+  ruleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: Colors.surfaceContainer,
+    padding: 10,
+    borderRadius: Shapes.md,
+  },
+  ruleBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(212, 255, 50, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ruleBadgeText: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 11,
+    color: Colors.primaryFixed,
+  },
+  ruleContent: {
+    flex: 1,
+  },
+  ruleTitle: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 12,
+    color: Colors.onSurface,
+  },
+  ruleSubtitle: {
+    fontFamily: FontFamily.body,
+    fontSize: 10.5,
+    color: Colors.onSurfaceVariant,
+    marginTop: 1,
+    lineHeight: 14,
+  },
+
+  auditStatusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: Shapes.pill,
+    marginLeft: 'auto',
+  },
+  auditStatusPillSuccess: {
+    backgroundColor: 'rgba(212, 255, 50, 0.15)',
+  },
+  auditStatusPillNeutral: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  auditStatusPillWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+  },
+  auditStatusPillError: {
+    backgroundColor: 'rgba(255, 82, 82, 0.15)',
+  },
+  auditStatusText: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  auditStatusTextSuccess: {
+    color: Colors.chartreuse,
+  },
+  auditStatusTextNeutral: {
+    color: '#60A5FA',
+  },
+  auditStatusTextWarning: {
+    color: Colors.warning,
+  },
+  auditStatusTextError: {
+    color: Colors.expense,
+  },
+  auditOutcomeBody: {
+    gap: 10,
+    marginTop: 4,
+  },
+  auditOutcomeNarrative: {
+    fontFamily: FontFamily.body,
+    fontSize: 12,
+    color: Colors.onSurface,
+    lineHeight: 17,
+  },
+  auditMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  auditMetricBox: {
+    flex: 1,
+    minWidth: 70,
+    backgroundColor: Colors.surfaceContainer,
+    padding: 8,
+    borderRadius: Shapes.sm,
+  },
+  auditMetricLabel: {
+    fontFamily: FontFamily.headingMedium,
+    fontSize: 9,
+    color: Colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+  },
+  auditMetricValue: {
+    fontFamily: FontFamily.numericBold,
+    fontSize: 11.5,
+    color: Colors.onSurface,
+    marginTop: 2,
+  },
+  auditEmptyText: {
+    fontFamily: FontFamily.body,
+    fontSize: 11.5,
+    color: Colors.onSurfaceVariant,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+
+  baselinesList: {
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: Shapes.md,
+    borderWidth: 1,
+    borderColor: Colors.outlineVariant,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  baselineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  baselineLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  baselineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  baselineCatName: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 12,
+    color: Colors.onSurface,
+  },
+  baselineCatMeta: {
+    fontFamily: FontFamily.body,
+    fontSize: 10,
+    color: Colors.onSurfaceVariant,
+  },
+  baselineRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  baselineStatsCol: {
+    alignItems: 'flex-end',
+  },
+  baselineThresholdText: {
+    fontFamily: FontFamily.numericBold,
+    fontSize: 10.5,
+    color: Colors.primaryFixed,
+  },
+  baselineMedianText: {
+    fontFamily: FontFamily.body,
+    fontSize: 9.5,
+    color: Colors.onSurfaceVariant,
+  },
+  readinessPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  readinessPillReady: {
+    backgroundColor: 'rgba(212, 255, 50, 0.15)',
+  },
+  readinessPillPending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+  },
+  readinessPillText: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 8.5,
+    letterSpacing: 0.5,
+  },
+  readinessPillTextReady: {
+    color: Colors.chartreuse,
+  },
+  readinessPillTextPending: {
+    color: Colors.warning,
   },
 });

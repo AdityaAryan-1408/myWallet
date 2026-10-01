@@ -40,7 +40,7 @@ export default function AddTransactionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ prefillDate?: string; type?: string }>();
-  const { accounts, creditCards, refreshFinancials } = useFinancialStore();
+  const { accounts, creditCards, categories, refreshFinancials } = useFinancialStore();
 
   // Current Today String
   const todayStr = useMemo(() => {
@@ -56,32 +56,35 @@ export default function AddTransactionScreen() {
     return 'expense';
   });
   const [expression, setExpression] = useState<string>('0');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('cat_food');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
+    const firstExpense = categories?.find((c) => c.type === 'expense' && c.is_active === 1);
+    return firstExpense?.id || 'cat_food';
+  });
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<'account' | 'credit_card'>('account');
 
   // Compute primary bank account
   const primaryAccount = useMemo(() => {
-    return accounts.find((a) => a.is_primary === 1 && a.is_active === 1) || accounts[0];
+    return accounts.find((a) => a.is_primary === 1 && a.is_active === 1) || accounts[0] || null;
   }, [accounts]);
 
   const [sourceId, setSourceId] = useState<string>(() => {
     const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
-    return primary?.id || accounts[0]?.id || 'acc_sbi';
+    return primary?.id || accounts[0]?.id || '';
   });
   const [destAccountId, setDestAccountId] = useState<string>(() => {
     const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
     const secondary = accounts.find((a) => a.id !== (primary?.id || accounts[0]?.id));
-    return secondary?.id || accounts[1]?.id || 'acc_cash';
+    return secondary?.id || accounts[1]?.id || '';
   });
   const [note, setNote] = useState<string>('');
 
   // Auto-sync default source to primary bank account if initialized before accounts loaded
   React.useEffect(() => {
-    if (primaryAccount && (!sourceId || sourceId === 'acc_sbi')) {
+    if (primaryAccount && !sourceId) {
       setSourceId(primaryAccount.id);
     }
-  }, [primaryAccount]);
+  }, [primaryAccount, sourceId]);
 
   // Merchant suggestion presets & live reward tip
   const quickMerchants = useMemo(() => MerchantRepository.getQuickMerchantChips(), []);
@@ -183,13 +186,26 @@ export default function AddTransactionScreen() {
     const time = now.toTimeString().split(' ')[0];
     const txId = `tx_${Date.now()}`;
 
+    const validAccountId =
+      sourceType === 'account' && sourceId && accounts.some((a) => a.id === sourceId)
+        ? sourceId
+        : null;
+    const validCardId =
+      sourceType === 'credit_card' && sourceId && creditCards.some((c) => c.id === sourceId)
+        ? sourceId
+        : null;
+    const validDestAccountId =
+      type === 'transfer' && destAccountId && accounts.some((a) => a.id === destAccountId)
+        ? destAccountId
+        : null;
+
     const tx = {
       id: txId,
       type,
       amount: evaluatedAmount,
-      account_id: sourceType === 'account' ? sourceId : null,
-      dest_account_id: type === 'transfer' ? destAccountId : null,
-      credit_card_id: sourceType === 'credit_card' ? sourceId : null,
+      account_id: validAccountId,
+      dest_account_id: validDestAccountId,
+      credit_card_id: validCardId,
       category_id: type !== 'transfer' ? selectedCategoryId : null,
       subcategory_id: type !== 'transfer' ? selectedSubcategoryId : null,
       date: transactionDate,
@@ -201,9 +217,6 @@ export default function AddTransactionScreen() {
     };
 
     TransactionRepository.create(tx);
-
-    // AI Anomaly Audit Trigger (In-App & System Notification on Outliers)
-    AiIntelligenceService.auditTransaction(tx).catch(() => {});
 
     // Reactive store update
     refreshFinancials();

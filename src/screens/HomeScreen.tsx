@@ -30,7 +30,11 @@ import {
 } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
-import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import {
+  AnimatedNumber,
+  AmbientParticleField,
+  HeroBreathingHalo,
+} from '@/components/ui';
 import {
   MonthCalendarModal,
   ProfileNameModal,
@@ -39,6 +43,7 @@ import {
   DashboardCardWrapper,
   DashboardCardRenderer,
   DashboardCardPicker,
+  AtmosphericHorizonGreeting,
 } from '@/components/home';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 import { useFinancialStore, useDashboardStore } from '@/stores';
@@ -91,6 +96,17 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     setTimeout(() => setRefreshing(false), 400);
   };
 
+  // Current dynamic month label (e.g. "Oct 2026") and end-of-month label (e.g. "Oct 31")
+  const currentMonthLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }, []);
+
+  const endOfMonthLabel = useMemo(() => {
+    const now = new Date();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return `${lastDay.toLocaleDateString('en-US', { month: 'short' })} ${lastDay.getDate()}`;
+  }, []);
+
   // Sort visible cards: Pinned cards first, sorted by order; then unpinned cards, sorted by order
   const visibleCards = useMemo(() => {
     return [...cards]
@@ -105,7 +121,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     <View style={styles.screen}>
       <ScreenHeader
         subtitle="HOME DASHBOARD"
-        monthLabel="Sep 2026"
+        monthLabel={currentMonthLabel}
         onMonthPress={() => setCalendarVisible(true)}
         onAvatarPress={() => setProfileVisible(true)}
       />
@@ -124,11 +140,8 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           />
         }
       >
-        {/* ─── Personalized Greeting (Permanent) ─── */}
-        <Animated.View entering={FadeInDown.duration(500)} style={styles.greetingSection}>
-          <Text style={styles.greetingTitle}>Hi, {userName} 👋</Text>
-          <Text style={styles.greetingSubtitle}>Here is your real-time financial pulse</Text>
-        </Animated.View>
+        {/* ─── Atmospheric Time-of-Day Horizon (Upgrade 4.3) ─── */}
+        <AtmosphericHorizonGreeting userName={userName} />
 
         {/* ─── Hero Card: Safe-to-Spend (Permanent) ─── */}
         <Animated.View
@@ -140,6 +153,14 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
         >
           {/* Ambient Glow */}
           <View style={styles.heroGlow} />
+
+          {/* Living Ambient Particle Field */}
+          <AmbientParticleField
+            color={availableToSpend < 0 ? Colors.expense : Colors.chartreuse}
+          />
+
+          {/* Living Perimeter Breathing Halo */}
+          <HeroBreathingHalo isDeficit={availableToSpend < 0} />
 
           <View style={styles.heroContent}>
             {/* Eyebrow with live pulse dot */}
@@ -188,7 +209,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
 
             {/* Pacing Subtext */}
             <Text style={styles.heroSubtext}>
-              Safe pace through Sep 30 •{' '}
+              Safe pace through {endOfMonthLabel} •{' '}
               <Text style={styles.heroHighlight}>
                 ₹{dailySpendLimit.toLocaleString('en-IN')}/day limit
               </Text>{' '}
@@ -336,24 +357,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.surface,
   },
-  greetingSection: {
-    paddingHorizontal: 4,
-    paddingTop: 4,
-    paddingBottom: 2,
-  },
-  greetingTitle: {
-    ...Typography.headlineSm,
-    color: Colors.onSurface,
-    fontSize: 20,
-    fontWeight: '700',
-    lineHeight: 26,
-  },
-  greetingSubtitle: {
-    ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    fontSize: 12,
-    marginTop: 2,
-  },
   scrollView: {
     flex: 1,
   },
@@ -366,7 +369,7 @@ const styles = StyleSheet.create({
     borderRadius: Shapes.xxl,
     padding: Spacing.cardPaddingLg,
     borderWidth: 1,
-    borderColor: 'rgba(212, 255, 50, 0.22)',
+    borderColor: Colors.chartreuseGlow,
     overflow: 'hidden',
     position: 'relative',
     ...Elevation.high,

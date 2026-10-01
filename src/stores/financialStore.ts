@@ -32,13 +32,14 @@ import {
   calculateAvailableToSpend,
   calculateDailyPacing,
 } from '@/domain/financialCalculations';
+import { ThemeMode } from '@/theme';
 
 interface FinancialState {
   isInitialized: boolean;
   userName: string;
   avatarBadge: string;
   currency: string;
-  themeMode: 'dark' | 'light' | 'system';
+  themeMode: ThemeMode;
   // Derived Core Metrics
   availableToSpend: number;
   totalBankCashBalance: number;
@@ -70,7 +71,7 @@ interface FinancialState {
   setUserName: (name: string) => void;
   setAvatarBadge: (badge: string) => void;
   setCurrency: (currency: string) => void;
-  setThemeMode: (mode: 'dark' | 'light' | 'system') => void;
+  setThemeMode: (mode: ThemeMode) => void;
   deleteTransaction: (id: string) => void;
   deleteCard: (id: string) => void;
   setBudget: (categoryId: string, amount: number) => void;
@@ -145,7 +146,6 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   initialize: () => {
     try {
       initDatabase();
-      NotificationService.initialize().catch((e) => console.warn('NotificationService init error:', e));
       const userName = SettingsRepository.getUserName();
       const avatarBadge = SettingsRepository.getAvatarBadge();
       const currency = SettingsRepository.getCurrency();
@@ -153,7 +153,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       try {
         if (NativeModules.AppTheme?.getTheme) {
           const nativeTheme = NativeModules.AppTheme.getTheme();
-          if (nativeTheme === 'light' || nativeTheme === 'dark') {
+          if (nativeTheme === 'light' || nativeTheme === 'dark' || nativeTheme === 'amethyst' || nativeTheme === 'sapphire') {
             themeMode = nativeTheme;
           }
         }
@@ -193,7 +193,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
     }
   },
 
-  setThemeMode: (mode: 'dark' | 'light' | 'system') => {
+  setThemeMode: (mode: ThemeMode) => {
     try {
       SettingsRepository.setThemeMode(mode);
       if (NativeModules.AppTheme?.setTheme) {
@@ -217,7 +217,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   deleteCard: (id: string) => {
     try {
       CreditCardRepository.delete(id);
-      NotificationService.onCardBillPaid(id).catch(() => {});
+      NotificationService.onCardBillPaid(id).catch((error) => console.warn('Card reminder cancellation failed:', error));
       get().refreshFinancials();
     } catch (error) {
       console.error('Error deleting credit card:', error);
@@ -374,7 +374,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
         ...data,
         is_settled: 0,
         created_at: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch((error) => console.warn('Debt reminder scheduling failed:', error));
       get().refreshFinancials();
     } catch (error) {
       console.error('Error creating debt:', error);
@@ -386,7 +386,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       DebtRepository.update(id, fields);
       const updated = DebtRepository.getById(id);
       if (updated) {
-        NotificationService.scheduleDebtReminder(updated).catch(() => {});
+        NotificationService.scheduleDebtReminder(updated).catch((error) => console.warn('Debt reminder scheduling failed:', error));
       }
       get().refreshFinancials();
     } catch (error) {
@@ -397,7 +397,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   deleteDebt: (id) => {
     try {
       DebtRepository.delete(id);
-      NotificationService.onDebtSettled(id).catch(() => {});
+      NotificationService.onDebtSettled(id).catch((error) => console.warn('Debt reminder cancellation failed:', error));
       get().refreshFinancials();
     } catch (error) {
       console.error('Error deleting debt:', error);
@@ -407,7 +407,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   settleDebt: (id) => {
     try {
       DebtRepository.settle(id);
-      NotificationService.onDebtSettled(id).catch(() => {});
+      NotificationService.onDebtSettled(id).catch((error) => console.warn('Debt reminder cancellation failed:', error));
       get().refreshFinancials();
     } catch (error) {
       console.error('Error settling debt:', error);
@@ -419,7 +419,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       DebtRepository.unsettle(id);
       const updated = DebtRepository.getById(id);
       if (updated) {
-        NotificationService.scheduleDebtReminder(updated).catch(() => {});
+        NotificationService.scheduleDebtReminder(updated).catch((error) => console.warn('Debt reminder scheduling failed:', error));
       }
       get().refreshFinancials();
     } catch (error) {
@@ -432,7 +432,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       DebtRepository.recordRepayment(debtId, amount, date, note);
       const debt = DebtRepository.getById(debtId);
       if (debt && debt.is_settled === 1) {
-        NotificationService.onDebtSettled(debtId).catch(() => {});
+        NotificationService.onDebtSettled(debtId).catch((error) => console.warn('Debt reminder cancellation failed:', error));
       }
       get().refreshFinancials();
     } catch (error) {

@@ -6,24 +6,37 @@
  * - Schedules recurring or date-specific reminders for People & Debts
  * - Auto-manages Credit Card statement, grace period, and due date alerts
  * - Synchronizes with SQLite in_app_notifications table
- * - Gracefully degrades in Expo Go (where native remote/push push modules are disabled)
+ * - Supports local notifications in Expo Go, development builds, and release builds
  */
 
 import { Platform } from 'react-native';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type * as ExpoNotifications from 'expo-notifications';
 import { CreditCard, PeopleDebt } from '@/db/schema';
 import { SettingsRepository, CreditCardRepository, NotificationRepository, DebtRepository } from '@/repositories';
 import { calculateCreditCardLifecycle } from '@/domain/financialCalculations';
 
-// Safely obtain native expo-notifications without throwing in Expo Go
+type NotificationChannelId =
+  | 'channel_general'
+  | 'channel_credit_cards'
+  | 'channel_debts'
+  | 'channel_anomalies';
+
+type NotificationDiagnosticLevel = 'info' | 'warning' | 'error';
+
+export type NotificationDiagnostic = {
+  timestamp: string;
+  level: NotificationDiagnosticLevel;
+  event: string;
+  details?: Record<string, unknown>;
+};
+
+// Local notifications are supported in every native runtime, including Expo Go.
+// Only remote push-token features require a development/release build.
 let Notifications: typeof ExpoNotifications | null = null;
+let initializationPromise: Promise<boolean> | null = null;
+const diagnostics: NotificationDiagnostic[] = [];
 
-const isExpoGo =
-  Constants.appOwnership === 'expo' ||
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-
-if (!isExpoGo && Platform.OS !== 'web') {
+if (Platform.OS !== 'web') {
   try {
     Notifications = require('expo-notifications');
     Notifications?.setNotificationHandler({
@@ -37,21 +50,54 @@ if (!isExpoGo && Platform.OS !== 'web') {
     });
   } catch (e) {
     Notifications = null;
+    console.warn('expo-notifications is unavailable:', e);
   }
 }
 
 export const NotificationService = {
   _listenerRegistered: false,
 
+  recordDiagnostic(
+    level: NotificationDiagnosticLevel,
+    event: string,
+    details?: Record<string, unknown>
+  ): void {
+    const entry: NotificationDiagnostic = {
+      timestamp: new Date().toISOString(),
+      level,
+      event,
+      details,
+    };
+    diagnostics.push(entry);
+    if (diagnostics.length > 100) diagnostics.shift();
+
+    const message = `[Notifications] ${event}`;
+    if (level === 'error') console.error(message, details);
+    else if (level === 'warning') console.warn(message, details);
+    else console.info(message, details);
+  },
+
+  getDiagnostics(): readonly NotificationDiagnostic[] {
+    return diagnostics;
+  },
+
   /**
    * Initializes notification channels on Android and requests permissions.
    */
   async initialize(): Promise<boolean> {
-    if (Platform.OS === 'web' || !Notifications) return false;
+    if (Platform.OS === 'web' || !Notifications) {
+      this.recordDiagnostic('warning', 'local_notifications_unavailable', {
+        platform: Platform.OS,
+      });
+      return false;
+    }
 
-    try {
-      // Setup Android notification channels
-      if (Platform.OS === 'android') {
+    if (initializationPromise) return initializationPromise;
+
+    initializationPromise = (async () => {
+      try {
+        // Setup Android notification channels before any notification is scheduled.
+        if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('channel_debts', {
           name: 'People & Debts',
           importance: Notifications.AndroidImportance.HIGH,
@@ -75,19 +121,27 @@ export const NotificationService = {
           lightColor: '#D4FF32',
           sound: 'default',
         });
-      }
 
-      // Check current permissions
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
+        await Notifications.setNotificationChannelAsync('channel_anomalies', {
+          name: 'Spending Anomalies',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 350, 200, 350],
+          lightColor: '#F59E0B',
+          sound: 'default',
+        });
+        }
 
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
+        // Check current permissions
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
 
-      // Set up notification received listener once
-      if (!this._listenerRegistered && Notifications) {
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        // Set up notification received listener once
+        if (!this._listenerRegistered && Notifications) {
         this._listenerRegistered = true;
         Notifications.addNotificationReceivedListener((notification) => {
           try {
@@ -125,12 +179,26 @@ export const NotificationService = {
             console.warn('Error handling received notification in listener:', e);
           }
         });
-      }
+        }
 
-      return finalStatus === 'granted';
-    } catch (e) {
-      console.warn('Error initializing notifications:', e);
-      return false;
+        const granted = finalStatus === 'granted';
+        this.recordDiagnostic(granted ? 'info' : 'warning', 'notification_system_initialized', {
+          permission: finalStatus,
+          platform: Platform.OS,
+        });
+        return granted;
+      } catch (e) {
+        this.recordDiagnostic('error', 'notification_system_initialization_failed', {
+          error: e instanceof Error ? e.message : String(e),
+        });
+        return false;
+      }
+    })();
+
+    try {
+      return await initializationPromise;
+    } finally {
+      initializationPromise = null;
     }
   },
 
@@ -148,7 +216,7 @@ export const NotificationService = {
     id?: string;
     title: string;
     body: string;
-    channelId?: 'channel_general' | 'channel_credit_cards' | 'channel_debts';
+    channelId?: NotificationChannelId;
     data?: Record<string, any>;
   }): Promise<boolean> {
     if (Platform.OS === 'web' || !Notifications) return false;
@@ -160,8 +228,11 @@ export const NotificationService = {
     try {
       const hasPermission = await this.initialize();
       if (!hasPermission) {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') return false;
+        this.recordDiagnostic('warning', 'immediate_notification_not_posted', {
+          reason: 'permission_not_granted',
+          channelId,
+        });
+        return false;
       }
 
       const notifChannel = Platform.OS === 'android' ? channelId : undefined;
@@ -178,9 +249,14 @@ export const NotificationService = {
         trigger: null,
       });
 
+      this.recordDiagnostic('info', 'immediate_notification_posted', { id, channelId });
       return true;
     } catch (e) {
-      console.warn('Could not post system notification:', e);
+      this.recordDiagnostic('error', 'immediate_notification_failed', {
+        id,
+        channelId,
+        error: e instanceof Error ? e.message : String(e),
+      });
       return false;
     }
   },
@@ -221,6 +297,25 @@ export const NotificationService = {
       hour: isNaN(hour) ? 9 : Math.max(0, Math.min(23, hour)),
       minute: isNaN(minute) ? 0 : Math.max(0, Math.min(59, minute)),
     };
+  },
+
+  /**
+   * Returns hour and minute for a debt, respecting custom reminder_time if set,
+   * otherwise falling back to global preferred reminder time.
+   */
+  getDebtTimeParts(debt?: PeopleDebt | null): { hour: number; minute: number } {
+    if (debt?.reminder_time && debt.reminder_time.includes(':')) {
+      const parts = debt.reminder_time.split(':');
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isNaN(h) && !isNaN(m)) {
+        return {
+          hour: Math.max(0, Math.min(23, h)),
+          minute: Math.max(0, Math.min(59, m)),
+        };
+      }
+    }
+    return this.getPreferredTimeParts();
   },
 
   /**
@@ -291,10 +386,23 @@ export const NotificationService = {
     }
 
     if (!SettingsRepository.getNotificationsEnabled() || !SettingsRepository.getDebtRemindersEnabled()) {
+      await this.cancelReminder(notifId);
+      this.recordDiagnostic('info', 'debt_reminder_cancelled', {
+        debtId: debt.id,
+        reason: 'notifications_disabled',
+      });
       return;
     }
 
-    const { hour, minute } = this.getPreferredTimeParts();
+    if (!(await this.initialize())) {
+      this.recordDiagnostic('warning', 'debt_reminder_not_scheduled', {
+        debtId: debt.id,
+        reason: 'notification_system_unavailable',
+      });
+      return;
+    }
+
+    const { hour, minute } = this.getDebtTimeParts(debt);
     const formattedAmount = `₹${Math.round(debt.amount).toLocaleString('en-IN')}`;
     const isReceivable = debt.direction === 'they_owe';
 
@@ -325,8 +433,7 @@ export const NotificationService = {
       DebtRepository.update(debt.id, { last_reminded_at: new Date().toISOString() });
     }
 
-    // 2. Schedule native recurring reminder with Notifications module
-    // Note: Do NOT post immediate system notification here; the OS triggers it at scheduled time!
+    // 2. Schedule native recurring reminder. The OS triggers it at the configured time.
     if (!Notifications) return;
 
     try {
@@ -348,6 +455,7 @@ export const NotificationService = {
             channelId: 'channel_debts',
           },
         });
+        await this.verifyScheduledReminder(notifId, 'channel_debts');
       } else if (debt.reminder_cadence === 'weekly') {
         const refDate = debt.reminder_date
           ? new Date(debt.reminder_date)
@@ -371,9 +479,10 @@ export const NotificationService = {
             channelId: 'channel_debts',
           },
         });
+        await this.verifyScheduledReminder(notifId, 'channel_debts');
       } else if (debt.reminder_cadence === 'custom_date' && debt.reminder_date) {
         const targetDate = new Date(`${debt.reminder_date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
-        if (targetDate.getTime() > Date.now()) {
+        if (!Number.isNaN(targetDate.getTime()) && targetDate.getTime() > Date.now()) {
           await Notifications.scheduleNotificationAsync({
             identifier: notifId,
             content: {
@@ -388,10 +497,20 @@ export const NotificationService = {
               channelId: 'channel_debts',
             },
           });
+          await this.verifyScheduledReminder(notifId, 'channel_debts');
+        } else {
+          this.recordDiagnostic('warning', 'debt_reminder_not_scheduled', {
+            debtId: debt.id,
+            reason: 'date_is_invalid_or_not_in_the_future',
+            reminderDate: debt.reminder_date,
+          });
         }
       }
     } catch (e) {
-      console.warn(`Could not schedule native debt notification for ${debt.id}:`, e);
+      this.recordDiagnostic('error', 'debt_reminder_scheduling_failed', {
+        debtId: debt.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   },
 
@@ -402,6 +521,15 @@ export const NotificationService = {
     const allCards = cards || CreditCardRepository.getAllActive();
     const notificationsEnabled = SettingsRepository.getNotificationsEnabled();
     const cardRemindersEnabled = SettingsRepository.getCardRemindersEnabled();
+
+    const schedulingAllowed =
+      notificationsEnabled && cardRemindersEnabled && (await this.initialize());
+
+    if (notificationsEnabled && cardRemindersEnabled && !schedulingAllowed) {
+      this.recordDiagnostic('warning', 'card_reminders_not_scheduled', {
+        reason: 'notification_system_unavailable',
+      });
+    }
 
     for (const card of allCards) {
       const notifId = `cc_${card.id}`;
@@ -431,7 +559,8 @@ export const NotificationService = {
         continue;
       }
 
-      if (!notificationsEnabled || !cardRemindersEnabled) {
+      if (!notificationsEnabled || !cardRemindersEnabled || !schedulingAllowed) {
+        await this.cancelReminder(notifId);
         continue;
       }
 
@@ -502,8 +631,12 @@ export const NotificationService = {
                 channelId: 'channel_credit_cards',
               },
             });
+            await this.verifyScheduledReminder(notifId, 'channel_credit_cards');
           } catch (e) {
-            console.warn(`Could not schedule native card notification for ${card.id}:`, e);
+            this.recordDiagnostic('error', 'card_reminder_scheduling_failed', {
+              cardId: card.id,
+              error: e instanceof Error ? e.message : String(e),
+            });
           }
         }
       }
@@ -532,6 +665,14 @@ export const NotificationService = {
    */
   async syncAllReminders(): Promise<void> {
     try {
+      const notificationsEnabled = SettingsRepository.getNotificationsEnabled();
+      if (notificationsEnabled && !(await this.initialize())) {
+        this.recordDiagnostic('warning', 'reminder_reconciliation_skipped', {
+          reason: 'notification_system_unavailable',
+        });
+        return;
+      }
+
       // 1. Sync unsettled debts
       const debts = DebtRepository.getUnsettled();
       for (const debt of debts) {
@@ -541,9 +682,39 @@ export const NotificationService = {
       // 2. Sync credit cards
       const cards = CreditCardRepository.getAllActive();
       await this.syncCreditCardReminders(cards);
+      this.recordDiagnostic('info', 'reminder_reconciliation_completed', {
+        debtCount: debts.length,
+        cardCount: cards.length,
+      });
     } catch (e) {
-      console.warn('Error syncing reminders:', e);
+      this.recordDiagnostic('error', 'reminder_reconciliation_failed', {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
+  },
+
+  /**
+   * Confirms that the native scheduler persisted the request we just created.
+   */
+  async verifyScheduledReminder(identifier: string, channelId: NotificationChannelId): Promise<void> {
+    if (!Notifications) {
+      throw new Error('expo-notifications is unavailable');
+    }
+
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const request = scheduled.find((item) => item.identifier === identifier);
+    if (!request) {
+      throw new Error(`Native scheduler did not retain ${identifier}`);
+    }
+
+    const requestChannel = request.trigger && typeof request.trigger === 'object' && 'channelId' in request.trigger
+      ? request.trigger.channelId
+      : undefined;
+    if (Platform.OS === 'android' && requestChannel !== channelId) {
+      throw new Error(`Scheduled ${identifier} on ${String(requestChannel)} instead of ${channelId}`);
+    }
+
+    this.recordDiagnostic('info', 'reminder_schedule_verified', { identifier, channelId });
   },
 
   /**
@@ -556,7 +727,12 @@ export const NotificationService = {
       await Notifications.cancelScheduledNotificationAsync(`${identifier}_repeat`);
       await Notifications.dismissNotificationAsync(identifier);
       await Notifications.dismissNotificationAsync(`${identifier}_repeat`);
-    } catch {}
+    } catch (e) {
+      this.recordDiagnostic('warning', 'reminder_cancellation_failed', {
+        identifier,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   },
 
   /**
@@ -567,6 +743,87 @@ export const NotificationService = {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
       await Notifications.dismissAllNotificationsAsync();
-    } catch {}
+      this.recordDiagnostic('info', 'all_reminders_cancelled');
+    } catch (e) {
+      this.recordDiagnostic('warning', 'all_reminders_cancellation_failed', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  /**
+   * Schedules a delayed test notification to verify timing & background delivery.
+   */
+  async scheduleDelayedTestNotification(delaySeconds: number = 5): Promise<boolean> {
+    if (Platform.OS === 'web' || !Notifications) return false;
+    try {
+      const hasPermission = await this.initialize();
+      if (!hasPermission) {
+        this.recordDiagnostic('warning', 'delayed_test_permission_not_granted');
+        return false;
+      }
+
+      const notifId = `test_delayed_${Date.now()}`;
+      await Notifications.scheduleNotificationAsync({
+        identifier: notifId,
+        content: {
+          title: 'MyWallet • 5s Delayed Test ⚡',
+          body: `5-second test fired successfully! Background delivery & exact timing verified.`,
+          sound: true,
+          color: '#D4FF32',
+          data: { test: true, delayed: true },
+          ...(Platform.OS === 'android' && { channelId: 'channel_general' }),
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: Math.max(1, delaySeconds),
+          channelId: 'channel_general',
+        },
+      });
+
+      this.recordDiagnostic('info', 'delayed_test_notification_scheduled', { delaySeconds, notifId });
+      return true;
+    } catch (e) {
+      this.recordDiagnostic('error', 'delayed_test_notification_failed', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return false;
+    }
+  },
+
+  /**
+   * Read-only diagnostics helper: retrieves current Android notification channels.
+   */
+  async getChannels(): Promise<ExpoNotifications.NotificationChannel[]> {
+    if (Platform.OS !== 'android' || !Notifications) return [];
+    try {
+      return (await Notifications.getNotificationChannelsAsync()) ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Read-only diagnostics helper: retrieves all currently scheduled pending notifications.
+   */
+  async getScheduledNotifications(): Promise<ExpoNotifications.NotificationRequest[]> {
+    if (!Notifications) return [];
+    try {
+      return await Notifications.getAllScheduledNotificationsAsync();
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Read-only diagnostics helper: retrieves app notification permissions status.
+   */
+  async getPermissions(): Promise<ExpoNotifications.NotificationPermissionsStatus | null> {
+    if (!Notifications) return null;
+    try {
+      return await Notifications.getPermissionsAsync();
+    } catch {
+      return null;
+    }
   },
 };

@@ -6,6 +6,7 @@
 
 import { getDatabase } from '@/db/client';
 import { Transaction } from '@/db/schema';
+import { AiIntelligenceService } from '@/services/aiIntelligenceService';
 
 export interface MonthlyTotals {
   income: number;
@@ -116,6 +117,38 @@ export const TransactionRepository = {
   create(tx: Omit<Transaction, 'created_at' | 'updated_at'>): void {
     const db = getDatabase();
     const now = new Date().toISOString();
+
+    // Verify foreign keys to prevent FOREIGN KEY constraint failed errors
+    let validAccountId: string | null = null;
+    if (tx.account_id) {
+      const acc = db.getFirstSync<{ id: string }>('SELECT id FROM accounts WHERE id = ?;', [tx.account_id]);
+      if (acc) validAccountId = tx.account_id;
+    }
+
+    let validDestAccountId: string | null = null;
+    if (tx.dest_account_id) {
+      const destAcc = db.getFirstSync<{ id: string }>('SELECT id FROM accounts WHERE id = ?;', [tx.dest_account_id]);
+      if (destAcc) validDestAccountId = tx.dest_account_id;
+    }
+
+    let validCardId: string | null = null;
+    if (tx.credit_card_id) {
+      const card = db.getFirstSync<{ id: string }>('SELECT id FROM credit_cards WHERE id = ?;', [tx.credit_card_id]);
+      if (card) validCardId = tx.credit_card_id;
+    }
+
+    let validCategoryId: string | null = null;
+    if (tx.category_id) {
+      const cat = db.getFirstSync<{ id: string }>('SELECT id FROM categories WHERE id = ?;', [tx.category_id]);
+      if (cat) validCategoryId = tx.category_id;
+    }
+
+    let validSubcategoryId: string | null = null;
+    if (tx.subcategory_id) {
+      const subcat = db.getFirstSync<{ id: string }>('SELECT id FROM categories WHERE id = ?;', [tx.subcategory_id]);
+      if (subcat) validSubcategoryId = tx.subcategory_id;
+    }
+
     db.runSync(
       `INSERT INTO transactions (id, type, amount, account_id, dest_account_id, credit_card_id, category_id, subcategory_id, date, time, note, expression, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
@@ -123,11 +156,11 @@ export const TransactionRepository = {
         tx.id,
         tx.type,
         tx.amount,
-        tx.account_id ?? null,
-        tx.dest_account_id ?? null,
-        tx.credit_card_id ?? null,
-        tx.category_id ?? null,
-        tx.subcategory_id ?? null,
+        validAccountId,
+        validDestAccountId,
+        validCardId,
+        validCategoryId,
+        validSubcategoryId,
         tx.date,
         tx.time,
         tx.note ?? null,
@@ -138,31 +171,45 @@ export const TransactionRepository = {
     );
 
     // If transaction affects an account, adjust balance
-    if (tx.account_id) {
+    if (validAccountId) {
       if (tx.type === 'income') {
         db.runSync('UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?;', [
           tx.amount,
           now,
-          tx.account_id,
+          validAccountId,
         ]);
       } else if (tx.type === 'expense') {
         db.runSync('UPDATE accounts SET balance = balance - ?, updated_at = ? WHERE id = ?;', [
           tx.amount,
           now,
-          tx.account_id,
+          validAccountId,
         ]);
-      } else if (tx.type === 'transfer' && tx.dest_account_id) {
+      } else if (tx.type === 'transfer' && validDestAccountId) {
         db.runSync('UPDATE accounts SET balance = balance - ?, updated_at = ? WHERE id = ?;', [
           tx.amount,
           now,
-          tx.account_id,
+          validAccountId,
         ]);
         db.runSync('UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?;', [
           tx.amount,
           now,
-          tx.dest_account_id,
+          validDestAccountId,
         ]);
       }
+    }
+
+    // Phase 3.5: Centralized anomaly audit trigger across all transaction creation routes
+    try {
+      const fullTx: Transaction = {
+        ...tx,
+        created_at: now,
+        updated_at: now,
+      };
+      AiIntelligenceService.auditTransaction(fullTx).catch((err) => {
+        console.warn('Central anomaly audit failed:', err);
+      });
+    } catch (e) {
+      console.warn('Error launching anomaly audit:', e);
     }
   },
 

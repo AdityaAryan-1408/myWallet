@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { StatusBar, StyleSheet } from 'react-native';
+import { AppState, StatusBar, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -51,18 +51,47 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      try {
-        useFinancialStore.getState().initialize();
-        // Purge any stale test anomaly notifications left from debug features
-        AiIntelligenceService.purgeTestNotifications();
-        // Synchronize and schedule notification reminders once at launch
-        NotificationService.syncAllReminders().catch(() => {});
-      } catch (e) {
-        console.warn('Database initialization deferred:', e);
+    if (!fontsLoaded && !fontError) return;
+
+    let isMounted = true;
+
+    const reconcileNotifications = async (reason: 'launch' | 'foreground') => {
+      const initialized = await NotificationService.initialize();
+      if (!initialized) {
+        NotificationService.recordDiagnostic('warning', 'reminder_reconciliation_not_run', {
+          reason,
+          cause: 'notification_system_unavailable',
+        });
+        return;
       }
+      await NotificationService.syncAllReminders();
+    };
+
+    try {
+      useFinancialStore.getState().initialize();
+      // Purge any stale test anomaly notifications left from debug features.
+      AiIntelligenceService.purgeTestNotifications();
+      reconcileNotifications('launch').catch((error) => {
+        console.warn('Notification launch reconciliation failed:', error);
+      });
+    } catch (e) {
+      console.warn('Database initialization deferred:', e);
+    } finally {
       SplashScreen.hideAsync();
     }
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (isMounted && nextState === 'active') {
+        reconcileNotifications('foreground').catch((error) => {
+          console.warn('Notification foreground reconciliation failed:', error);
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      appStateSubscription.remove();
+    };
   }, [fontsLoaded, fontError]);
 
   const { themeMode } = useFinancialStore();

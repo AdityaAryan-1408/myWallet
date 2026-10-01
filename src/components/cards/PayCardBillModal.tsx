@@ -149,7 +149,7 @@ export function PayCardBillModal({
       `Bill Payment for ${card.name}`
     );
 
-    NotificationService.onCardBillPaid(card.id).catch(() => {});
+    NotificationService.onCardBillPaid(card.id).catch((error) => console.warn('Card reminder cancellation failed:', error));
     refreshFinancials();
     onPaymentSuccess?.();
     onClose();

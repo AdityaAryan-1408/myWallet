@@ -4,3 +4,4 @@ export {
   DEFAULT_DASHBOARD_CARDS,
   type DashboardCardConfig,
 } from './dashboardStore';
+export { useThemeStore } from './themeStore';

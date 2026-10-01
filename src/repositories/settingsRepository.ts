@@ -6,6 +6,7 @@
 
 import { getDatabase } from '@/db/client';
 import { UserSetting } from '@/db/schema';
+import { ThemeMode } from '@/theme';
 
 const DEFAULT_USER_NAME = 'Aditya';
 const DEFAULT_AVATAR_BADGE = '🚀';
@@ -69,14 +70,23 @@ export const SettingsRepository = {
     this.set('cycle_reset_day', String(clamped));
   },
 
-  getThemeMode(): 'dark' | 'light' | 'system' {
+  getThemeMode(): ThemeMode {
     const val = this.get('theme_mode', DEFAULT_THEME_MODE);
-    if (val === 'light' || val === 'system') return val;
+    if (val === 'light' || val === 'amethyst' || val === 'sapphire') return val;
     return 'dark';
   },
 
-  setThemeMode(mode: 'dark' | 'light' | 'system'): void {
+  setThemeMode(mode: ThemeMode): void {
     this.set('theme_mode', mode);
+  },
+
+  getAmbientParticlesEnabled(): boolean {
+    const val = this.get('ambient_particles_enabled', '1');
+    return val === '1';
+  },
+
+  setAmbientParticlesEnabled(enabled: boolean): void {
+    this.set('ambient_particles_enabled', enabled ? '1' : '0');
   },
 
   getHapticsEnabled(): boolean {

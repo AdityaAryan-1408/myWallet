@@ -17,4 +17,5 @@ export {
   getCardDefinition,
   type DashboardCardDefinition,
 } from './DashboardCardRegistry';
+export { AtmosphericHorizonGreeting } from './AtmosphericHorizonGreeting';
 export * from './AnalyticsCardAdapters';

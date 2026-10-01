@@ -227,7 +227,7 @@ export const TemplateRepository = {
       const primaryAcc = db.getFirstSync<{ id: string }>(
         'SELECT id FROM accounts WHERE is_active = 1 ORDER BY is_primary DESC LIMIT 1;'
       );
-      targetAccountId = primaryAcc?.id || 'acc_cash';
+      targetAccountId = primaryAcc?.id || undefined;
     }
 
     const txId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

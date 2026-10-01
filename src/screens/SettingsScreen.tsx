@@ -45,6 +45,7 @@ import {
   RotateCcw,
   Bell,
   BellRing,
+  Palette,
 } from 'lucide-react-native';
 
 import {
@@ -54,13 +55,14 @@ import {
 } from '@/repositories';
 import { NotificationService } from '@/services';
 import { WidgetPreviewCard } from '@/components/widget';
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useThemeStore } from '@/stores';
 import {
   ProfileEditorModal,
   BackupExportModal,
   ResetConfirmModal,
+  NotificationDiagnosticsCard,
 } from '@/components/settings';
-import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation } from '@/theme';
+import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation, ThemeMode } from '@/theme';
 
 type SettingsTab = 'preferences' | 'profile' | 'backup';
 
@@ -72,6 +74,55 @@ const CURRENCY_OPTIONS = [
 ];
 
 const CYCLE_DAYS = [1, 5, 10, 15, 20, 25];
+
+interface ThemeOption {
+  mode: ThemeMode;
+  name: string;
+  tag: string;
+  description: string;
+  canvasColor: string;
+  surfaceColor: string;
+  accentColor: string;
+}
+
+const THEME_OPTIONS: ThemeOption[] = [
+  {
+    mode: 'dark',
+    name: 'Zenith Dark',
+    tag: 'AMOLED OBSIDIAN',
+    description: 'Deep obsidian canvas with high-voltage neon chartreuse',
+    canvasColor: '#101319',
+    surfaceColor: '#191C22',
+    accentColor: '#D4FF32',
+  },
+  {
+    mode: 'light',
+    name: 'Zenith Light',
+    tag: 'CRISP DAYLIGHT',
+    description: 'Clean frosted slate canvas with vibrant emerald green',
+    canvasColor: '#F4F6F9',
+    surfaceColor: '#FFFFFF',
+    accentColor: '#16A34A',
+  },
+  {
+    mode: 'amethyst',
+    name: 'Midnight Amethyst',
+    tag: 'VIOLET LUXURY',
+    description: 'Rich obsidian plum canvas with electric amethyst glow',
+    canvasColor: '#0D0B14',
+    surfaceColor: '#161322',
+    accentColor: '#A855F7',
+  },
+  {
+    mode: 'sapphire',
+    name: 'Sapphire Horizon',
+    tag: 'CYAN ABYSS',
+    description: 'Abyssal deep oceanic navy with electric cyan glaze',
+    canvasColor: '#080D1A',
+    surfaceColor: '#0E172B',
+    accentColor: '#00D2FF',
+  },
+];
 
 export function SettingsScreen() {
   const router = useRouter();
@@ -89,6 +140,15 @@ export function SettingsScreen() {
     creditCards,
     recentTransactions,
   } = useFinancialStore();
+
+  const { ambientParticlesEnabled, setAmbientParticlesEnabled } = useThemeStore();
+
+  const handleToggleAmbientParticles = (val: boolean) => {
+    setAmbientParticlesEnabled(val);
+    if (hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
 
   // Active section tab
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -145,8 +205,11 @@ export function SettingsScreen() {
   const cloudStatus = useMemo(() => BackupRepository.getGoogleDriveStatus(), [backupModalVisible]);
 
   // Preferences Handlers
-  const handleSelectTheme = (mode: 'dark' | 'light' | 'system') => {
-    Haptics.selectionAsync();
+  const handleSelectTheme = (mode: ThemeMode) => {
+    if (themeMode === mode) return;
+    if (hapticsEnabled) {
+      Haptics.selectionAsync();
+    }
     setThemeMode(mode);
 
     if (Platform.OS === 'web') {
@@ -178,7 +241,7 @@ export function SettingsScreen() {
         } catch (e) {
           console.warn('Could not restart app:', e);
         }
-      }, 150);
+      }, 120);
     }
   };
 
@@ -215,22 +278,21 @@ export function SettingsScreen() {
     Haptics.selectionAsync();
     setDebtRemindersEnabled(val);
     SettingsRepository.setDebtRemindersEnabled(val);
-    NotificationService.syncAllReminders().catch(() => {});
+    NotificationService.syncAllReminders().catch((error) => console.warn('Debt reminder reconciliation failed:', error));
   };
 
   const handleToggleCardReminders = (val: boolean) => {
     Haptics.selectionAsync();
     setCardRemindersEnabled(val);
     SettingsRepository.setCardRemindersEnabled(val);
-    NotificationService.syncAllReminders().catch(() => {});
+    NotificationService.syncAllReminders().catch((error) => console.warn('Card reminder reconciliation failed:', error));
   };
 
   const handleSelectReminderTime = async (time: string) => {
     Haptics.selectionAsync();
     setReminderTime(time);
     SettingsRepository.setPreferredReminderTime(time);
-    await NotificationService.cancelAll();
-    NotificationService.syncAllReminders().catch(() => {});
+    await NotificationService.syncAllReminders();
   };
 
   const handleSendTestNotification = async () => {
@@ -313,49 +375,153 @@ export function SettingsScreen() {
         {/* ═════════ SECTION 1: PREFERENCES ═════════ */}
         {activeTab === 'preferences' && (
           <Animated.View entering={FadeInDown.duration(400)}>
-            {/* Theme Mode Card */}
+            {/* ─── THEME STUDIO CARD (v2.0) ─── */}
             <View style={styles.sectionCard}>
-              <View style={styles.cardHeader}>
-                <Moon size={16} color={Colors.primaryFixed} />
-                <Text style={styles.cardHeaderTitle}>THEME APPEARANCE</Text>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardHeader}>
+                  <Palette size={16} color={Colors.chartreuse} />
+                  <Text style={styles.cardHeaderTitle}>THEME STUDIO</Text>
+                </View>
+                <View style={styles.versionTag}>
+                  <Text style={styles.versionTagText}>v2.0</Text>
+                </View>
               </View>
               <Text style={styles.cardDesc}>
-                Zenith Obsidian dark palette tailored for AMOLED displays.
+                Handcrafted visual palettes tailored for OLED displays and daylight legibility.
               </Text>
 
-              <View style={styles.themeOptionsRow}>
-                {[
-                  { mode: 'dark' as const, label: 'Dark', icon: Moon },
-                  { mode: 'light' as const, label: 'Light', icon: Sun },
-                  { mode: 'system' as const, label: 'System', icon: Smartphone },
-                ].map((item) => {
-                  const isSelected = themeMode === item.mode;
-                  const IconComp = item.icon;
+              {/* 4 Interactive Visual Palette Cards */}
+              <View style={styles.themeGrid}>
+                {THEME_OPTIONS.map((theme) => {
+                  const isSelected = themeMode === theme.mode;
                   return (
                     <TouchableOpacity
-                      key={item.mode}
+                      key={theme.mode}
                       style={[
-                        styles.themeOptionPill,
-                        isSelected && styles.themeOptionPillActive,
+                        styles.themeCard,
+                        isSelected && [
+                          styles.themeCardActive,
+                          { borderColor: theme.accentColor },
+                        ],
                       ]}
-                      onPress={() => handleSelectTheme(item.mode)}
-                      activeOpacity={0.7}
+                      onPress={() => handleSelectTheme(theme.mode)}
+                      activeOpacity={0.8}
                     >
-                      <IconComp
-                        size={16}
-                        color={isSelected ? Colors.onPrimary : Colors.onSurfaceVariant}
-                      />
-                      <Text
+                      {/* Palette Visual Swatch Preview */}
+                      <View
                         style={[
-                          styles.themeOptionText,
-                          isSelected && styles.themeOptionTextActive,
+                          styles.themeSwatchPreview,
+                          { backgroundColor: theme.canvasColor },
                         ]}
                       >
-                        {item.label}
-                      </Text>
+                        {/* Mini Card Representation */}
+                        <View
+                          style={[
+                            styles.themeMiniCard,
+                            {
+                              backgroundColor: theme.surfaceColor,
+                              borderColor: theme.accentColor + '40',
+                            },
+                          ]}
+                        >
+                          {/* Accent Pill Indicator */}
+                          <View
+                            style={[
+                              styles.themeAccentPill,
+                              { backgroundColor: theme.accentColor },
+                            ]}
+                          />
+                          <View style={styles.themeMiniLines}>
+                            <View
+                              style={[
+                                styles.themeMiniLine,
+                                {
+                                  backgroundColor:
+                                    theme.mode === 'light'
+                                      ? '#CBD5E1'
+                                      : 'rgba(255,255,255,0.18)',
+                                  width: '70%',
+                                },
+                              ]}
+                            />
+                            <View
+                              style={[
+                                styles.themeMiniLine,
+                                {
+                                  backgroundColor:
+                                    theme.mode === 'light'
+                                      ? '#E2E8F0'
+                                      : 'rgba(255,255,255,0.08)',
+                                  width: '45%',
+                                },
+                              ]}
+                            />
+                          </View>
+                        </View>
+
+                        {/* Selected Checkmark Badge */}
+                        {isSelected && (
+                          <View
+                            style={[
+                              styles.themeSelectedBadge,
+                              { backgroundColor: theme.accentColor },
+                            ]}
+                          >
+                            <Check
+                              size={12}
+                              color={theme.mode === 'light' ? '#FFFFFF' : '#000000'}
+                              strokeWidth={3}
+                            />
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Theme Meta Info */}
+                      <View style={styles.themeInfo}>
+                        <Text
+                          style={[
+                            styles.themeName,
+                            isSelected && { color: theme.accentColor },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {theme.name}
+                        </Text>
+                        <Text style={styles.themeTag}>{theme.tag}</Text>
+                        <Text style={styles.themeDesc} numberOfLines={2}>
+                          {theme.description}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+
+              {/* Subtle Divider */}
+              <View style={styles.themeDivider} />
+
+              {/* Ambient Particle Motion Switch */}
+              <View style={styles.switchRow}>
+                <View style={styles.switchMeta}>
+                  <View style={styles.cardHeader}>
+                    <Sparkles size={16} color={Colors.chartreuse} />
+                    <Text style={styles.cardHeaderTitle}>AMBIENT PARTICLE MOTION</Text>
+                  </View>
+                  <Text style={styles.switchDesc}>
+                    Living zero-lag floating motes inside the Safe-to-Spend Hero Card.
+                  </Text>
+                </View>
+                <Switch
+                  value={ambientParticlesEnabled}
+                  onValueChange={handleToggleAmbientParticles}
+                  thumbColor={
+                    ambientParticlesEnabled ? Colors.chartreuse : Colors.surfaceBright
+                  }
+                  trackColor={{
+                    false: Colors.surfaceContainerHighest,
+                    true: Colors.chartreuseGlow,
+                  }}
+                />
               </View>
             </View>
 
@@ -553,6 +719,9 @@ export function SettingsScreen() {
                       {isSendingTest ? 'Firing Notification...' : 'Send Test Notification Now'}
                     </Text>
                   </TouchableOpacity>
+
+                  {/* Notification Diagnostics & Live Inspector (Phase 2) */}
+                  <NotificationDiagnosticsCard />
                 </View>
               )}
             </View>
@@ -735,6 +904,12 @@ export function SettingsScreen() {
           </Animated.View>
         )}
 
+        {/* Footer Brand & Version */}
+        <View style={styles.footerBranding}>
+          <Text style={styles.footerVersionText}>MyWallet v2.0.0 (Build 10)</Text>
+          <Text style={styles.footerSubText}>Zenith Adaptive Architecture • Offline SQLite</Text>
+        </View>
+
         <View style={{ height: 60 }} />
       </ScrollView>
 
@@ -853,33 +1028,138 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     marginBottom: Spacing.md,
   },
-  themeOptionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  themeOptionPill: {
-    flex: 1,
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: 40,
-    borderRadius: Shapes.lg,
-    backgroundColor: Colors.surfaceContainerHigh,
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  versionTag: {
+    backgroundColor: Colors.chartreuseWash,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Shapes.sm,
     borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
+    borderColor: Colors.chartreuseGlow,
   },
-  themeOptionPillActive: {
-    backgroundColor: Colors.primaryFixed,
-    borderColor: Colors.primaryFixed,
+  versionTagText: {
+    ...Typography.labelCaps,
+    fontSize: 9,
+    color: Colors.chartreuse,
+    fontWeight: '800',
   },
-  themeOptionText: {
-    ...Typography.bodySmMedium,
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 4,
+  },
+  themeCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: Shapes.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.strokeLight,
+    overflow: 'hidden',
+  },
+  themeCardActive: {
+    borderWidth: 2,
+  },
+  themeSwatchPreview: {
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.strokeSubtle,
+  },
+  themeMiniCard: {
+    width: '74%',
+    height: 36,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    gap: 6,
+  },
+  themeAccentPill: {
+    width: 6,
+    height: 18,
+    borderRadius: 3,
+  },
+  themeMiniLines: {
+    flex: 1,
+    gap: 4,
+  },
+  themeMiniLine: {
+    height: 4,
+    borderRadius: 2,
+  },
+  themeSelectedBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+  },
+  themeInfo: {
+    padding: 10,
+  },
+  themeName: {
+    ...Typography.bodySm,
+    fontFamily: FontFamily.headingSemiBold,
     color: Colors.onSurface,
+    fontSize: 12,
   },
-  themeOptionTextActive: {
-    color: Colors.surface,
-    fontWeight: '700',
+  themeTag: {
+    ...Typography.labelCaps,
+    fontSize: 8.5,
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  themeDesc: {
+    ...Typography.bodySm,
+    fontSize: 10,
+    color: Colors.onSurfaceVariant,
+    marginTop: 4,
+    lineHeight: 13,
+  },
+  themeDivider: {
+    height: 1,
+    backgroundColor: Colors.strokeSubtle,
+    marginVertical: Spacing.md,
+  },
+  switchDesc: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  footerBranding: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
+    marginBottom: 4,
+    gap: 2,
+  },
+  footerVersionText: {
+    ...Typography.bodySm,
+    fontFamily: FontFamily.headingSemiBold,
+    fontSize: 12,
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.5,
+  },
+  footerSubText: {
+    ...Typography.bodySm,
+    fontSize: 10,
+    color: Colors.outline,
   },
   currencyGrid: {
     flexDirection: 'row',

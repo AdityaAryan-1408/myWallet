@@ -92,12 +92,44 @@ export function PaymentSourceModal({
           </View>
 
           <ScrollView style={styles.scrollList} showsVerticalScrollIndicator={false}>
+            {/* ─── Unlinked / Cash Option ─── */}
+            {!isTransfer && (
+              <View style={[styles.groupCard, { marginBottom: Spacing.md }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.itemRow,
+                    selectedSourceType === 'account' && !selectedSourceId && styles.itemRowSelected,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => handleSelect('account', '')}
+                >
+                  <View style={[styles.iconBox, { backgroundColor: `${Colors.primaryFixed}15` }]}>
+                    <Wallet size={18} color={Colors.onSurfaceVariant} />
+                  </View>
+                  <View style={styles.itemMeta}>
+                    <View style={styles.titleLine}>
+                      <Text style={styles.itemName}>Cash / Unlinked</Text>
+                      <View style={styles.last4Badge}>
+                        <Text style={styles.last4Text}>DIRECT</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.itemSub}>Record without adjusting account balance</Text>
+                  </View>
+                  <View style={[styles.radioCircle, selectedSourceType === 'account' && !selectedSourceId && styles.radioCircleSelected]}>
+                    {selectedSourceType === 'account' && !selectedSourceId && (
+                      <Check size={12} color={Colors.surface} strokeWidth={3} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* ─── Bank Accounts & Cash ─── */}
-            <Text style={styles.sectionHeader}>BANK ACCOUNTS & CASH</Text>
+            <Text style={styles.sectionHeader}>BANK ACCOUNTS & WALLETS</Text>
             {sortedAccounts.length === 0 ? (
               <View style={[styles.groupCard, { padding: Spacing.md, alignItems: 'center' }]}>
                 <Text style={{ ...Typography.bodySm, color: Colors.onSurfaceVariant }}>
-                  No accounts found. Please add an account first.
+                  No bank accounts configured yet.
                 </Text>
               </View>
             ) : (

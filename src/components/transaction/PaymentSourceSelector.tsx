@@ -46,13 +46,13 @@ export function PaymentSourceSelector({
 
   // Active account or card
   const activeAccount = useMemo(() => {
-    if (selectedSourceType !== 'account') return null;
-    return accounts.find((a) => a.id === selectedSourceId) || accounts[0] || null;
+    if (selectedSourceType !== 'account' || !selectedSourceId) return null;
+    return accounts.find((a) => a.id === selectedSourceId) || null;
   }, [accounts, selectedSourceType, selectedSourceId]);
 
   const activeCard = useMemo(() => {
-    if (selectedSourceType !== 'credit_card') return null;
-    return creditCards.find((c) => c.id === selectedSourceId) || creditCards[0] || null;
+    if (selectedSourceType !== 'credit_card' || !selectedSourceId) return null;
+    return creditCards.find((c) => c.id === selectedSourceId) || null;
   }, [creditCards, selectedSourceType, selectedSourceId]);
 
   // Derived metadata
@@ -88,12 +88,12 @@ export function PaymentSourceSelector({
     }
 
     return {
-      name: 'Select Payment Source',
-      badge: '',
+      name: 'Cash / Unlinked',
+      badge: 'UNLINKED',
       badgeColor: Colors.onSurfaceVariant,
-      subLabel: 'Tap to choose account or card',
-      color: Colors.primaryFixed,
-      iconType: 'bank' as const,
+      subLabel: 'Logs expense without deducting from bank',
+      color: Colors.onSurfaceVariant,
+      iconType: 'cash' as const,
       isPrimary: false,
     };
   }, [selectedSourceType, activeAccount, activeCard]);

@@ -33,10 +33,13 @@ import {
   Bell,
   AtSign,
   Zap,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react-native';
 
 import { PeopleDebt, DebtDirection, ReminderCadence } from '@/db/schema';
-import { DebtRepository } from '@/repositories';
+import { DebtRepository, SettingsRepository } from '@/repositories';
 import { useFinancialStore } from '@/stores';
 import { COMMON_UPI_HANDLES, validateUpiId } from '@/utils/upi';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
@@ -79,6 +82,18 @@ export function AddEditDebtModal({
   const [upiId, setUpiId] = useState('');
   const [reminderCadence, setReminderCadence] = useState<ReminderCadence>('none');
   const [reminderDateStr, setReminderDateStr] = useState('');
+  const [reminderTime, setReminderTime] = useState('09:00');
+  const [selectedWeekday, setSelectedWeekday] = useState<number>(new Date().getDay());
+
+  const WEEKDAYS = [
+    { day: 0, label: 'Sun', full: 'Sunday' },
+    { day: 1, label: 'Mon', full: 'Monday' },
+    { day: 2, label: 'Tue', full: 'Tuesday' },
+    { day: 3, label: 'Wed', full: 'Wednesday' },
+    { day: 4, label: 'Thu', full: 'Thursday' },
+    { day: 5, label: 'Fri', full: 'Friday' },
+    { day: 6, label: 'Sat', full: 'Saturday' },
+  ];
 
   // Distinct people from repository for autocomplete
   const existingPeople = useMemo(() => {
@@ -88,6 +103,7 @@ export function AddEditDebtModal({
   // Pre-fill fields on open
   useEffect(() => {
     if (visible) {
+      const globalTime = SettingsRepository.getPreferredReminderTime() || '09:00';
       if (debtToEdit) {
         setPersonName(debtToEdit.person_name);
         setDirection(debtToEdit.direction);
@@ -97,6 +113,13 @@ export function AddEditDebtModal({
         setUpiId(debtToEdit.upi_id || '');
         setReminderCadence(debtToEdit.reminder_cadence || 'none');
         setReminderDateStr(debtToEdit.reminder_date || '');
+        setReminderTime(debtToEdit.reminder_time || globalTime);
+        if (debtToEdit.reminder_cadence === 'weekly' && debtToEdit.reminder_date) {
+          const d = new Date(debtToEdit.reminder_date);
+          if (!isNaN(d.getTime())) {
+            setSelectedWeekday(d.getDay());
+          }
+        }
       } else {
         setPersonName('');
         setDirection(presetDirection);
@@ -106,12 +129,93 @@ export function AddEditDebtModal({
         setUpiId('');
         setReminderCadence('none');
         setReminderDateStr('');
+        setReminderTime(globalTime);
+        setSelectedWeekday(new Date().getDay());
       }
     }
   }, [visible, debtToEdit, presetDirection]);
 
+  // Live Next-Fire Calculation and Past-Date Validation
+  const nextFireInfo = useMemo(() => {
+    if (reminderCadence === 'none') {
+      return { text: 'No automatic reminder scheduled.', isValid: true, isPast: false };
+    }
+
+    const [hStr, mStr] = (reminderTime || '09:00').split(':');
+    const h = parseInt(hStr, 10) || 9;
+    const m = parseInt(mStr, 10) || 0;
+    const now = new Date();
+
+    if (reminderCadence === 'daily') {
+      const target = new Date();
+      target.setHours(h, m, 0, 0);
+      let isTomorrow = false;
+      if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
+        isTomorrow = true;
+      }
+      const formattedTime = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return {
+        text: `Fires ${isTomorrow ? 'tomorrow' : 'today'} at ${formattedTime} (repeats daily)`,
+        isValid: true,
+        isPast: false,
+      };
+    }
+
+    if (reminderCadence === 'weekly') {
+      const target = new Date();
+      target.setHours(h, m, 0, 0);
+      let daysUntil = (selectedWeekday - now.getDay() + 7) % 7;
+      if (daysUntil === 0 && target.getTime() <= now.getTime()) {
+        daysUntil = 7;
+      }
+      target.setDate(now.getDate() + daysUntil);
+      const weekdayName = WEEKDAYS.find((w) => w.day === selectedWeekday)?.full || 'Weekly';
+      const formattedTime = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const nextDateStr = target.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+      return {
+        text: `Every ${weekdayName} at ${formattedTime} (next: ${nextDateStr})`,
+        isValid: true,
+        isPast: false,
+      };
+    }
+
+    if (reminderCadence === 'custom_date') {
+      if (!reminderDateStr || !reminderDateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return { text: 'Choose or enter a valid date (YYYY-MM-DD)', isValid: false, isPast: false };
+      }
+      const target = new Date(`${reminderDateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+      if (isNaN(target.getTime())) {
+        return { text: 'Invalid date format (use YYYY-MM-DD)', isValid: false, isPast: false };
+      }
+      if (target.getTime() <= now.getTime()) {
+        return {
+          text: 'Selected date & time is in the past. Choose a future schedule.',
+          isValid: false,
+          isPast: true,
+        };
+      }
+      const formatted = target.toLocaleDateString('en-IN', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const formattedTime = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return {
+        text: `Fires on ${formatted} at ${formattedTime}`,
+        isValid: true,
+        isPast: false,
+      };
+    }
+
+    return { text: '', isValid: true, isPast: false };
+  }, [reminderCadence, reminderDateStr, reminderTime, selectedWeekday]);
+
   const amount = parseFloat(amountStr) || 0;
-  const isValid = personName.trim().length > 0 && amount > 0;
+  const isFormBasicsValid = personName.trim().length > 0 && amount > 0;
+  const isScheduleValid = reminderCadence === 'none' || nextFireInfo.isValid;
+  const isValid = isFormBasicsValid && isScheduleValid;
   const isUpiValid = useMemo(() => validateUpiId(upiId), [upiId]);
 
   const handleAppendUpiSuffix = (suffix: string) => {
@@ -127,15 +231,70 @@ export function AddEditDebtModal({
     }
   };
 
+  const handleSelectDatePreset = (daysAhead: number) => {
+    Haptics.selectionAsync();
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    setReminderDateStr(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    );
+  };
+
+  const handleSelectEndOfMonth = () => {
+    Haptics.selectionAsync();
+    const now = new Date();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setReminderDateStr(
+      `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`
+    );
+  };
+
   const handleSave = () => {
-    if (!isValid) return;
+    if (!isFormBasicsValid) return;
+
+    if (reminderCadence === 'custom_date' && !nextFireInfo.isValid) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        'Future Date Required',
+        nextFireInfo.isPast
+          ? 'The selected reminder date and time have already passed. Please select a future date or adjust the time.'
+          : 'Please provide a valid date in YYYY-MM-DD format.'
+      );
+      return;
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const trimmedName = personName.trim();
     const trimmedReason = reason.trim() || null;
     const trimmedNote = note.trim() || null;
     const trimmedUpiId = upiId.trim() || null;
-    const trimmedDate = reminderCadence === 'custom_date' ? reminderDateStr.trim() || null : null;
+
+    let computedReminderDate: string | null = null;
+    let computedReminderTime: string | null = null;
+
+    if (reminderCadence === 'weekly') {
+      const now = new Date();
+      const [hStr, mStr] = (reminderTime || '09:00').split(':');
+      const target = new Date();
+      target.setHours(parseInt(hStr, 10) || 9, parseInt(mStr, 10) || 0, 0, 0);
+      let daysUntil = (selectedWeekday - now.getDay() + 7) % 7;
+      if (daysUntil === 0 && target.getTime() <= now.getTime()) {
+        daysUntil = 7;
+      }
+      target.setDate(now.getDate() + daysUntil);
+      computedReminderDate = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+      computedReminderTime = reminderTime || '09:00';
+    } else if (reminderCadence === 'custom_date') {
+      computedReminderDate = reminderDateStr.trim() || null;
+      computedReminderTime = reminderTime || '09:00';
+    } else if (reminderCadence === 'daily') {
+      computedReminderDate = null;
+      computedReminderTime = reminderTime || '09:00';
+    } else {
+      computedReminderDate = null;
+      computedReminderTime = null;
+    }
 
     if (isEdit && debtToEdit) {
       updateDebt(debtToEdit.id, {
@@ -146,7 +305,8 @@ export function AddEditDebtModal({
         note: trimmedNote,
         upi_id: trimmedUpiId,
         reminder_cadence: reminderCadence,
-        reminder_date: trimmedDate,
+        reminder_date: computedReminderDate,
+        reminder_time: computedReminderTime,
       });
     } else {
       createDebt({
@@ -159,7 +319,8 @@ export function AddEditDebtModal({
         upi_id: trimmedUpiId,
         is_settled: 0,
         reminder_cadence: reminderCadence,
-        reminder_date: trimmedDate,
+        reminder_date: computedReminderDate,
+        reminder_time: computedReminderTime,
       });
     }
 
@@ -456,7 +617,7 @@ export function AddEditDebtModal({
             </ScrollView>
           </View>
 
-          {/* ─── Reminder Cadence (Phase 16) ─── */}
+          {/* ─── Reminder Cadence (Phase 16 & Phase 3 UX) ─── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionLabel}>REMINDER CADENCE</Text>
@@ -495,16 +656,151 @@ export function AddEditDebtModal({
               })}
             </View>
 
+            {/* Time Picker (Shown whenever reminders are active) */}
+            {reminderCadence !== 'none' && (
+              <View style={styles.subConfigSection}>
+                <View style={styles.subConfigHeader}>
+                  <Clock size={12} color={Colors.primaryFixed} />
+                  <Text style={styles.subConfigTitle}>REMINDER TIME</Text>
+                </View>
+                <View style={styles.timeChipsRow}>
+                  {[
+                    { time: '08:00', label: '8:00 AM' },
+                    { time: '09:00', label: '9:00 AM' },
+                    { time: '12:00', label: '12:00 PM' },
+                    { time: '18:00', label: '6:00 PM' },
+                    { time: '20:00', label: '8:00 PM' },
+                  ].map((item) => {
+                    const isSelected = reminderTime === item.time;
+                    return (
+                      <TouchableOpacity
+                        key={item.time}
+                        style={[styles.timeChip, isSelected && styles.timeChipActive]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setReminderTime(item.time);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.timeChipText, isSelected && styles.timeChipTextActive]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Weekday Picker for Weekly Cadence (Phase 3.2) */}
+            {reminderCadence === 'weekly' && (
+              <View style={styles.subConfigSection}>
+                <View style={styles.subConfigHeader}>
+                  <Calendar size={12} color={Colors.primaryFixed} />
+                  <Text style={styles.subConfigTitle}>RECURRING WEEKDAY</Text>
+                </View>
+                <View style={styles.weekdaysRow}>
+                  {WEEKDAYS.map((w) => {
+                    const isSelected = selectedWeekday === w.day;
+                    return (
+                      <TouchableOpacity
+                        key={w.day}
+                        style={[styles.weekdayChip, isSelected && styles.weekdayChipActive]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedWeekday(w.day);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.weekdayChipText,
+                            isSelected && styles.weekdayChipTextActive,
+                          ]}
+                        >
+                          {w.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Validated Custom Date Controls (Phase 3.3) */}
             {reminderCadence === 'custom_date' && (
-              <View style={[styles.inputWrapper, { marginTop: 8 }]}>
-                <Calendar size={18} color={Colors.onSurfaceVariant} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInputWithIcon}
-                  placeholder="YYYY-MM-DD (e.g. 2026-09-30)"
-                  placeholderTextColor={Colors.onSurfaceVariant}
-                  value={reminderDateStr}
-                  onChangeText={setReminderDateStr}
-                />
+              <View style={styles.subConfigSection}>
+                <View style={styles.subConfigHeader}>
+                  <Calendar size={12} color={Colors.primaryFixed} />
+                  <Text style={styles.subConfigTitle}>SPECIFIC FOLLOW-UP DATE</Text>
+                </View>
+
+                {/* Quick Date Presets */}
+                <View style={styles.datePresetsRow}>
+                  <TouchableOpacity
+                    style={styles.datePresetChip}
+                    onPress={() => handleSelectDatePreset(1)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.datePresetChipText}>Tomorrow</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.datePresetChip}
+                    onPress={() => handleSelectDatePreset(3)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.datePresetChipText}>In 3 Days</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.datePresetChip}
+                    onPress={() => handleSelectDatePreset(7)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.datePresetChipText}>In 1 Week</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.datePresetChip}
+                    onPress={handleSelectEndOfMonth}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.datePresetChipText}>End of Month</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <Calendar size={18} color={Colors.onSurfaceVariant} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.textInputWithIcon}
+                    placeholder="YYYY-MM-DD (e.g. 2026-10-15)"
+                    placeholderTextColor={Colors.onSurfaceVariant}
+                    value={reminderDateStr}
+                    onChangeText={setReminderDateStr}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Live Next-Fire Preview Banner (Phase 3.4) */}
+            {reminderCadence !== 'none' && (
+              <View
+                style={[
+                  styles.nextFireBanner,
+                  nextFireInfo.isPast && styles.nextFireBannerPast,
+                ]}
+              >
+                {nextFireInfo.isPast ? (
+                  <AlertTriangle size={15} color={Colors.warning} />
+                ) : (
+                  <CheckCircle2 size={15} color={Colors.chartreuse} />
+                )}
+                <Text
+                  style={[
+                    styles.nextFireText,
+                    nextFireInfo.isPast && styles.nextFireTextPast,
+                  ]}
+                >
+                  {nextFireInfo.text}
+                </Text>
               </View>
             )}
 
@@ -514,8 +810,8 @@ export function AddEditDebtModal({
                 : reminderCadence === 'daily'
                 ? 'Sends a reminder notification every day until settled.'
                 : reminderCadence === 'weekly'
-                ? 'Sends a weekly check-in notification until settled.'
-                : 'Fires an alert on the selected date to follow up on this balance.'}
+                ? 'Sends a check-in alert every week on your selected weekday.'
+                : 'Fires a high-priority system alert on your chosen date and time.'}
             </Text>
           </View>
 
@@ -822,6 +1118,122 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     marginTop: 6,
     lineHeight: 16,
+  },
+  subConfigSection: {
+    marginTop: 10,
+    backgroundColor: Colors.surfaceContainerLow,
+    borderRadius: Shapes.md,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+    gap: 8,
+  },
+  subConfigHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subConfigTitle: {
+    ...Typography.labelCaps,
+    fontSize: 9.5,
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 0.8,
+  },
+  timeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  timeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  timeChipActive: {
+    backgroundColor: Colors.chartreuseWash,
+    borderColor: Colors.primaryFixed,
+  },
+  timeChipText: {
+    fontFamily: FontFamily.headingMedium,
+    fontSize: 11,
+    color: Colors.onSurfaceVariant,
+  },
+  timeChipTextActive: {
+    color: Colors.primaryFixed,
+    fontWeight: '700',
+  },
+  weekdaysRow: {
+    flexDirection: 'row',
+    gap: 5,
+  },
+  weekdayChip: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: Shapes.sm,
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  weekdayChipActive: {
+    backgroundColor: Colors.chartreuseWash,
+    borderColor: Colors.primaryFixed,
+  },
+  weekdayChipText: {
+    fontFamily: FontFamily.headingMedium,
+    fontSize: 10.5,
+    color: Colors.onSurfaceVariant,
+  },
+  weekdayChipTextActive: {
+    color: Colors.primaryFixed,
+    fontWeight: '700',
+  },
+  datePresetsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  datePresetChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  datePresetChipText: {
+    fontFamily: FontFamily.body,
+    fontSize: 10.5,
+    color: Colors.onSurface,
+  },
+  nextFireBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(212, 255, 50, 0.08)',
+    borderRadius: Shapes.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 255, 50, 0.25)',
+    marginTop: 6,
+  },
+  nextFireBannerPast: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  nextFireText: {
+    fontFamily: FontFamily.headingMedium,
+    fontSize: 11,
+    color: Colors.chartreuse,
+    flex: 1,
+  },
+  nextFireTextPast: {
+    color: Colors.warning,
   },
   validUpiBadge: {
     flexDirection: 'row',
