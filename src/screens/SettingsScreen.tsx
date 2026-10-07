@@ -83,6 +83,7 @@ interface ThemeOption {
   canvasColor: string;
   surfaceColor: string;
   accentColor: string;
+  checkColor?: string;
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
@@ -94,6 +95,7 @@ const THEME_OPTIONS: ThemeOption[] = [
     canvasColor: '#101319',
     surfaceColor: '#191C22',
     accentColor: '#D4FF32',
+    checkColor: '#000000',
   },
   {
     mode: 'light',
@@ -103,6 +105,77 @@ const THEME_OPTIONS: ThemeOption[] = [
     canvasColor: '#F4F6F9',
     surfaceColor: '#FFFFFF',
     accentColor: '#16A34A',
+    checkColor: '#FFFFFF',
+  },
+  {
+    mode: 'mono_dark',
+    name: 'Minimal OLED',
+    tag: 'PURE MONOCHROME',
+    description: 'True #000000 black canvas & white typography. Zero red/green distractions.',
+    canvasColor: '#000000',
+    surfaceColor: '#121212',
+    accentColor: '#FFFFFF',
+    checkColor: '#000000',
+  },
+  {
+    mode: 'mono_light',
+    name: 'Minimal Ink',
+    tag: 'PAPER MONOCHROME',
+    description: 'Pure #FFFFFF white canvas & crisp black ink. Zero red/green distractions.',
+    canvasColor: '#FFFFFF',
+    surfaceColor: '#F2F2F2',
+    accentColor: '#000000',
+    checkColor: '#FFFFFF',
+  },
+  {
+    mode: 'emerald',
+    name: 'Emerald Reserve',
+    tag: 'SWISS VAULT',
+    description: 'Deep pine obsidian with vibrant mint emerald & champagne gold accents',
+    canvasColor: '#08120C',
+    surfaceColor: '#13241B',
+    accentColor: '#10B981',
+    checkColor: '#000000',
+  },
+  {
+    mode: 'crimson',
+    name: 'Cyberpunk Crimson',
+    tag: 'TOKYO NEON',
+    description: 'Pitch black OLED with electric laser crimson & solar flare orange',
+    canvasColor: '#050508',
+    surfaceColor: '#161421',
+    accentColor: '#FF2A55',
+    checkColor: '#FFFFFF',
+  },
+  {
+    mode: 'dune',
+    name: 'Desert Dune',
+    tag: 'WARM EARTH',
+    description: 'Warm espresso terracotta, desert sand gold, and Scandinavian sage',
+    canvasColor: '#141210',
+    surfaceColor: '#211D19',
+    accentColor: '#E07A5F',
+    checkColor: '#FFFFFF',
+  },
+  {
+    mode: 'sunset',
+    name: 'Sunset Mirage',
+    tag: 'VAPORWAVE DUSK',
+    description: 'Twilight obsidian sky with sunset coral & golden hour sun glow',
+    canvasColor: '#0D0B18',
+    surfaceColor: '#1C1731',
+    accentColor: '#FF6B6B',
+    checkColor: '#000000',
+  },
+  {
+    mode: 'gold',
+    name: 'Sovereign Gold',
+    tag: 'OLD MONEY',
+    description: 'Regal midnight navy abyss with 24k imperial bullion gold & sky glaze',
+    canvasColor: '#080C16',
+    surfaceColor: '#141D30',
+    accentColor: '#F5C518',
+    checkColor: '#000000',
   },
   {
     mode: 'amethyst',
@@ -112,6 +185,7 @@ const THEME_OPTIONS: ThemeOption[] = [
     canvasColor: '#0D0B14',
     surfaceColor: '#161322',
     accentColor: '#A855F7',
+    checkColor: '#FFFFFF',
   },
   {
     mode: 'sapphire',
@@ -121,6 +195,7 @@ const THEME_OPTIONS: ThemeOption[] = [
     canvasColor: '#080D1A',
     surfaceColor: '#0E172B',
     accentColor: '#00D2FF',
+    checkColor: '#000000',
   },
 ];
 
@@ -437,7 +512,7 @@ export function SettingsScreen() {
                                 styles.themeMiniLine,
                                 {
                                   backgroundColor:
-                                    theme.mode === 'light'
+                                    theme.mode === 'light' || theme.mode === 'mono_light'
                                       ? '#CBD5E1'
                                       : 'rgba(255,255,255,0.18)',
                                   width: '70%',
@@ -449,7 +524,7 @@ export function SettingsScreen() {
                                 styles.themeMiniLine,
                                 {
                                   backgroundColor:
-                                    theme.mode === 'light'
+                                    theme.mode === 'light' || theme.mode === 'mono_light'
                                       ? '#E2E8F0'
                                       : 'rgba(255,255,255,0.08)',
                                   width: '45%',
@@ -469,7 +544,12 @@ export function SettingsScreen() {
                           >
                             <Check
                               size={12}
-                              color={theme.mode === 'light' ? '#FFFFFF' : '#000000'}
+                              color={
+                                theme.checkColor ||
+                                (theme.mode === 'light' || theme.mode === 'mono_light'
+                                  ? '#FFFFFF'
+                                  : '#000000')
+                              }
                               strokeWidth={3}
                             />
                           </View>

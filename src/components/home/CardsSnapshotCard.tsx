@@ -47,17 +47,18 @@ export function CardsSnapshotCard({ onNavigateTab }: CardsSnapshotCardProps) {
         </View>
       ) : (
         creditCards.map((card) => {
-          const outstanding = CreditCardRepository.getCardOutstanding(card.id);
-          const util = card.credit_limit > 0 ? Math.round((outstanding / card.credit_limit) * 100) : 0;
+          const outstanding = CreditCardRepository.getCardOutstanding(card.id) ?? 0;
+          const limit = card.credit_limit ?? 0;
+          const util = limit > 0 ? Math.round((outstanding / limit) * 100) : 0;
           return (
             <View key={card.id} style={styles.creditCardRow}>
               <View style={styles.cardLogoBox}>
-                <CreditCard size={18} color={card.color} />
+                <CreditCard size={18} color={card.color || Colors.primaryFixed} />
               </View>
               <View style={styles.creditCardInfo}>
                 <Text style={styles.creditCardName}>{card.name}</Text>
                 <Text style={styles.creditCardSub}>
-                  Limit ₹{card.credit_limit.toLocaleString('en-IN')} • Resets {card.cycle_reset_day}th
+                  Limit ₹{limit.toLocaleString('en-IN')} • Resets {card.cycle_reset_day || 1}th
                 </Text>
               </View>
               <View style={styles.creditCardRight}>

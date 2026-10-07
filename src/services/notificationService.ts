@@ -12,7 +12,10 @@
 import { Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 import { CreditCard, PeopleDebt } from '@/db/schema';
-import { SettingsRepository, CreditCardRepository, NotificationRepository, DebtRepository } from '@/repositories';
+import { SettingsRepository } from '@/repositories/settingsRepository';
+import { CreditCardRepository } from '@/repositories/creditCardRepository';
+import { NotificationRepository } from '@/repositories/notificationRepository';
+import { DebtRepository } from '@/repositories/debtRepository';
 import { calculateCreditCardLifecycle } from '@/domain/financialCalculations';
 
 type NotificationChannelId =
@@ -30,27 +33,66 @@ export type NotificationDiagnostic = {
   details?: Record<string, unknown>;
 };
 
-// Local notifications are supported in every native runtime, including Expo Go.
-// Only remote push-token features require a development/release build.
-let Notifications: typeof ExpoNotifications | null = null;
+// Local notifications are supported in standalone APK and dev builds.
+// In Expo Go on Android, push notifications were removed in SDK 53, so we provide a safe fallback.
+let Notifications: any = null;
 let initializationPromise: Promise<boolean> | null = null;
 const diagnostics: NotificationDiagnostic[] = [];
 
 if (Platform.OS !== 'web') {
   try {
     Notifications = require('expo-notifications');
-    Notifications?.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
   } catch (e) {
-    Notifications = null;
-    console.warn('expo-notifications is unavailable:', e);
+    // Expo Go on Android throws at root expo-notifications export because remote push
+    // was removed in SDK 53. Attempt to load local notification submodules directly.
+    try {
+      const scheduleNotificationAsync = require('expo-notifications/build/scheduleNotificationAsync').scheduleNotificationAsync;
+      const cancelScheduledNotificationAsync = require('expo-notifications/build/cancelScheduledNotificationAsync').cancelScheduledNotificationAsync;
+      const cancelAllScheduledNotificationsAsync = require('expo-notifications/build/cancelAllScheduledNotificationsAsync').cancelAllScheduledNotificationsAsync;
+      const getAllScheduledNotificationsAsync = require('expo-notifications/build/getAllScheduledNotificationsAsync').getAllScheduledNotificationsAsync;
+      const setNotificationChannelAsync = require('expo-notifications/build/setNotificationChannelAsync').setNotificationChannelAsync;
+      const getNotificationChannelsAsync = require('expo-notifications/build/getNotificationChannelsAsync').getNotificationChannelsAsync;
+      const getNotificationChannelAsync = require('expo-notifications/build/getNotificationChannelAsync').getNotificationChannelAsync;
+      const { setNotificationHandler } = require('expo-notifications/build/NotificationsHandler');
+      const { addNotificationReceivedListener } = require('expo-notifications/build/NotificationsEmitter');
+      const { requestPermissionsAsync, getPermissionsAsync } = require('expo-notifications/build/NotificationPermissions');
+      const { AndroidImportance } = require('expo-notifications/build/NotificationChannelManager.types');
+      const { SchedulableTriggerInputTypes } = require('expo-notifications/build/Notifications.types');
+
+      Notifications = {
+        scheduleNotificationAsync,
+        cancelScheduledNotificationAsync,
+        cancelAllScheduledNotificationsAsync,
+        getAllScheduledNotificationsAsync,
+        setNotificationChannelAsync,
+        getNotificationChannelsAsync,
+        getNotificationChannelAsync,
+        setNotificationHandler,
+        addNotificationReceivedListener,
+        requestPermissionsAsync,
+        getPermissionsAsync,
+        AndroidImportance,
+        SchedulableTriggerInputTypes,
+      };
+    } catch (fallbackError) {
+      Notifications = null;
+    }
+  }
+
+  if (Notifications?.setNotificationHandler) {
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    } catch (e) {
+      console.warn('Failed to set notification handler:', e);
+    }
   }
 }
 
@@ -98,52 +140,68 @@ export const NotificationService = {
       try {
         // Setup Android notification channels before any notification is scheduled.
         if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('channel_debts', {
-          name: 'People & Debts',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#D4FF32',
-          sound: 'default',
-        });
+          try {
+            await Notifications.setNotificationChannelAsync('channel_debts', {
+              name: 'People & Debts',
+              importance: Notifications.AndroidImportance.HIGH,
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: '#D4FF32',
+              sound: 'default',
+            });
 
-        await Notifications.setNotificationChannelAsync('channel_credit_cards', {
-          name: 'Credit Card Due Dates',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 300, 200, 300],
-          lightColor: '#F59E0B',
-          sound: 'default',
-        });
+            await Notifications.setNotificationChannelAsync('channel_credit_cards', {
+              name: 'Credit Card Due Dates',
+              importance: Notifications.AndroidImportance.MAX,
+              vibrationPattern: [0, 300, 200, 300],
+              lightColor: '#F59E0B',
+              sound: 'default',
+            });
 
-        await Notifications.setNotificationChannelAsync('channel_general', {
-          name: 'General & System Alerts',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#D4FF32',
-          sound: 'default',
-        });
+            await Notifications.setNotificationChannelAsync('channel_general', {
+              name: 'General & System Alerts',
+              importance: Notifications.AndroidImportance.HIGH,
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: '#D4FF32',
+              sound: 'default',
+            });
 
-        await Notifications.setNotificationChannelAsync('channel_anomalies', {
-          name: 'Spending Anomalies',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 350, 200, 350],
-          lightColor: '#F59E0B',
-          sound: 'default',
-        });
+            await Notifications.setNotificationChannelAsync('channel_anomalies', {
+              name: 'Spending Anomalies',
+              importance: Notifications.AndroidImportance.HIGH,
+              vibrationPattern: [0, 350, 200, 350],
+              lightColor: '#F59E0B',
+              sound: 'default',
+            });
+          } catch (channelError) {
+            // Expo Go on Android does not provide NotificationsChannelsProvider (SDK 53+).
+            // Standalone APK builds (MyWallet.apk) have the full native provider.
+            this.recordDiagnostic('warning', 'android_notification_channels_unavailable_in_expo_go', {
+              cause: 'expo_go_client_unsupported',
+              error: channelError instanceof Error ? channelError.message : String(channelError),
+            });
+          }
         }
 
         // Check current permissions
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
+        let finalStatus = 'undetermined';
+        try {
+          const { status: existingStatus } = await Notifications.getPermissionsAsync();
+          finalStatus = existingStatus;
 
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
+          if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+          }
+        } catch (permError) {
+          this.recordDiagnostic('warning', 'notification_permissions_check_failed', {
+            error: permError instanceof Error ? permError.message : String(permError),
+          });
         }
 
         // Set up notification received listener once
         if (!this._listenerRegistered && Notifications) {
         this._listenerRegistered = true;
-        Notifications.addNotificationReceivedListener((notification) => {
+        Notifications.addNotificationReceivedListener((notification: any) => {
           try {
             const data = notification.request.content.data as Record<string, any> | undefined;
             if (data?.entityType === 'debt' && typeof data?.entityId === 'string') {
@@ -447,6 +505,8 @@ export const NotificationService = {
             body,
             data: { entityType: 'debt', entityId: debt.id },
             sound: true,
+            color: '#D4FF32',
+            ...(Platform.OS === 'android' && { channelId: 'channel_debts' }),
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -470,6 +530,8 @@ export const NotificationService = {
             body,
             data: { entityType: 'debt', entityId: debt.id },
             sound: true,
+            color: '#D4FF32',
+            ...(Platform.OS === 'android' && { channelId: 'channel_debts' }),
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
@@ -490,6 +552,8 @@ export const NotificationService = {
               body,
               data: { entityType: 'debt', entityId: debt.id },
               sound: true,
+              color: '#D4FF32',
+              ...(Platform.OS === 'android' && { channelId: 'channel_debts' }),
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -623,6 +687,8 @@ export const NotificationService = {
                 body,
                 data: { entityType: 'credit_card', entityId: card.id },
                 sound: true,
+                color: '#F59E0B',
+                ...(Platform.OS === 'android' && { channelId: 'channel_credit_cards' }),
               },
               trigger: {
                 type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -702,15 +768,18 @@ export const NotificationService = {
     }
 
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    const request = scheduled.find((item) => item.identifier === identifier);
+    const request = scheduled.find((item: any) => item.identifier === identifier);
     if (!request) {
       throw new Error(`Native scheduler did not retain ${identifier}`);
     }
 
-    const requestChannel = request.trigger && typeof request.trigger === 'object' && 'channelId' in request.trigger
-      ? request.trigger.channelId
+    const contentChannel = (request.content as any)?.channelId;
+    const triggerChannel = request.trigger && typeof request.trigger === 'object' && 'channelId' in request.trigger
+      ? (request.trigger as any).channelId
       : undefined;
-    if (Platform.OS === 'android' && requestChannel !== channelId) {
+    const requestChannel = contentChannel || triggerChannel;
+
+    if (Platform.OS === 'android' && requestChannel && requestChannel !== channelId) {
       throw new Error(`Scheduled ${identifier} on ${String(requestChannel)} instead of ${channelId}`);
     }
 

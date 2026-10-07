@@ -23,23 +23,34 @@ interface CategoryDonutProps {
   totalSpend: number;
   size?: number;
   strokeWidth?: number;
+  centerLabel?: string;
 }
 
 export function CategoryDonut({
-  categories,
-  totalSpend,
+  categories = [],
+  totalSpend = 0,
   size = 170,
   strokeWidth = 20,
+  centerLabel = 'TOTAL SPENT',
 }: CategoryDonutProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
 
+  const safeTotal = typeof totalSpend === 'number' && !isNaN(totalSpend) ? totalSpend : 0;
+
   // Compute stroke dash offsets
   let accumulatedPercent = 0;
 
   // Filter categories with > 0 spend
-  const activeCategories = categories.filter((c) => c.total > 0);
+  const activeCategories = (categories ?? [])
+    .filter((c) => (c?.total ?? 0) > 0)
+    .map((c) => ({
+      ...c,
+      total: c.total ?? 0,
+      percentage: typeof c.percentage === 'number' && !isNaN(c.percentage) ? c.percentage : 0,
+      categoryColor: c.categoryColor || Colors.primaryFixed,
+    }));
 
   return (
     <View style={styles.container}>
@@ -82,8 +93,8 @@ export function CategoryDonut({
 
         {/* Center Text */}
         <View style={styles.centerContainer}>
-          <Text style={styles.centerLabel}>TOTAL SPENT</Text>
-          <Text style={styles.centerAmount}>₹{totalSpend.toLocaleString('en-IN')}</Text>
+          <Text style={styles.centerLabel}>{centerLabel}</Text>
+          <Text style={styles.centerAmount}>₹{safeTotal.toLocaleString('en-IN')}</Text>
           <Text style={styles.centerCount}>{activeCategories.length} Categories</Text>
         </View>
       </View>

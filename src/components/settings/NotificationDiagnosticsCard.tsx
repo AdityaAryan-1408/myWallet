@@ -45,7 +45,9 @@ import {
 } from 'lucide-react-native';
 
 import { NotificationService, NotificationDiagnostic } from '@/services/notificationService';
-import { DebtRepository, CreditCardRepository, SettingsRepository } from '@/repositories';
+import { DebtRepository } from '@/repositories/debtRepository';
+import { CreditCardRepository } from '@/repositories/creditCardRepository';
+import { SettingsRepository } from '@/repositories/settingsRepository';
 import { PeopleDebt } from '@/db/schema';
 import { Colors, FontFamily, Spacing, Shapes } from '@/theme';
 

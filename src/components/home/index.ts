@@ -5,6 +5,7 @@
 export { MonthlySummaryCard } from './MonthlySummaryCard';
 export { CategoryBurnCard } from './CategoryBurnCard';
 export { CardsSnapshotCard } from './CardsSnapshotCard';
+export { AccountsSnapshotCard } from './AccountsSnapshotCard';
 export { RecentActivityCard } from './RecentActivityCard';
 export { QuickActionTemplatesCard } from './QuickActionTemplatesCard';
 export { BudgetMicroAlertsCard } from './BudgetMicroAlertsCard';

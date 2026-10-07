@@ -8,11 +8,20 @@ export {
   Colors,
   DarkColors,
   LightColors,
+  MonoDarkColors,
+  MonoLightColors,
+  EmeraldColors,
+  CrimsonColors,
+  DuneColors,
+  SunsetColors,
+  GoldColors,
   AmethystColors,
   SapphireColors,
   getInitialTheme,
   getThemePalette,
   activeTheme,
+  VALID_THEMES,
+  isValidTheme,
 } from './colors';
 export type { ColorToken, ThemeMode } from './colors';
 

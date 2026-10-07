@@ -114,6 +114,48 @@ export const TransactionRepository = {
     }));
   },
 
+  getCategoryDailySpend(dateStr: string): CategorySpend[] {
+    const db = getDatabase();
+    interface RawCategoryRow {
+      category_id: string;
+      name: string;
+      color: string;
+      icon: string;
+      total: number;
+    }
+
+    const rows = db.getAllSync<RawCategoryRow>(
+      `SELECT t.category_id, c.name, c.color, c.icon, SUM(t.amount) as total
+       FROM transactions t
+       LEFT JOIN categories c ON t.category_id = c.id
+       WHERE t.date = ? AND t.type = 'expense'
+       GROUP BY t.category_id
+       ORDER BY total DESC;`,
+      [dateStr]
+    );
+
+    const totalSpend = rows.reduce((sum: number, r: RawCategoryRow) => sum + r.total, 0);
+
+    return rows.map((r: RawCategoryRow) => ({
+      categoryId: r.category_id,
+      categoryName: r.name || 'Uncategorized',
+      categoryColor: r.color || '#8F937A',
+      categoryIcon: r.icon || 'HelpCircle',
+      total: r.total,
+      percentage: totalSpend > 0 ? Math.round((r.total / totalSpend) * 100) : 0,
+    }));
+  },
+
+  getDailyExpenseTotal(dateStr: string): number {
+    const db = getDatabase();
+    const row = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions 
+       WHERE date = ? AND type = 'expense';`,
+      [dateStr]
+    );
+    return row?.total ?? 0;
+  },
+
   create(tx: Omit<Transaction, 'created_at' | 'updated_at'>): void {
     const db = getDatabase();
     const now = new Date().toISOString();
@@ -205,7 +247,7 @@ export const TransactionRepository = {
         created_at: now,
         updated_at: now,
       };
-      AiIntelligenceService.auditTransaction(fullTx).catch((err) => {
+      AiIntelligenceService.auditTransaction(fullTx).catch((err: unknown) => {
         console.warn('Central anomaly audit failed:', err);
       });
     } catch (e) {

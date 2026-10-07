@@ -40,6 +40,7 @@ import {
   Sparkles,
   Sliders,
   Pin,
+  Landmark,
 } from 'lucide-react-native';
 
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
@@ -68,6 +69,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size: number; color: string
   Store,
   Target,
   Sparkles,
+  Landmark,
 };
 
 type CategoryFilter = 'all' | 'core' | 'insights' | 'habits' | 'tools';

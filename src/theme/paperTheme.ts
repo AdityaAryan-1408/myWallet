@@ -1,7 +1,8 @@
 import { MD3DarkTheme, MD3LightTheme, MD3Theme } from 'react-native-paper';
 import { Colors, getInitialTheme } from './colors';
 
-const isLight = getInitialTheme() === 'light';
+const initial = getInitialTheme();
+const isLight = initial === 'light' || initial === 'mono_light';
 const baseTheme = isLight ? MD3LightTheme : MD3DarkTheme;
 
 export const PaperTheme: MD3Theme = {

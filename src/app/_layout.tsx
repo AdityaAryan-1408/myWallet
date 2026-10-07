@@ -95,7 +95,7 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   const { themeMode } = useFinancialStore();
-  const isLight = themeMode === 'light';
+  const isLight = themeMode === 'light' || themeMode === 'mono_light';
 
   if (!fontsLoaded && !fontError) {
     return null;

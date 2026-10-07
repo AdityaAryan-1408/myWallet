@@ -63,13 +63,22 @@ export const DASHBOARD_CARD_REGISTRY: DashboardCardDefinition[] = [
     defaultOrder: 4,
   },
   {
+    id: 'accounts_snapshot',
+    displayName: 'Accounts Snapshot',
+    category: 'core',
+    description: 'Bank & cash accounts, liquid capital, and balances',
+    iconName: 'Landmark',
+    defaultVisible: true,
+    defaultOrder: 5,
+  },
+  {
     id: 'cards_snapshot',
     displayName: 'Credit Cards Snapshot',
     category: 'core',
     description: 'Active cards, credit limits, and utilization ratios',
     iconName: 'CreditCard',
     defaultVisible: true,
-    defaultOrder: 5,
+    defaultOrder: 6,
   },
   {
     id: 'recent_activity',
@@ -78,7 +87,7 @@ export const DASHBOARD_CARD_REGISTRY: DashboardCardDefinition[] = [
     description: 'Latest transaction feed with category icons',
     iconName: 'Clock',
     defaultVisible: true,
-    defaultOrder: 6,
+    defaultOrder: 7,
   },
 
   // ── Insights & Resilience Cards (Opt-in) ──

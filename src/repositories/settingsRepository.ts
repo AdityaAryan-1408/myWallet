@@ -6,13 +6,13 @@
 
 import { getDatabase } from '@/db/client';
 import { UserSetting } from '@/db/schema';
-import { ThemeMode } from '@/theme';
+import { ThemeMode, isValidTheme } from '@/theme';
 
 const DEFAULT_USER_NAME = 'Aditya';
 const DEFAULT_AVATAR_BADGE = '🚀';
 const DEFAULT_CURRENCY = 'INR';
 const DEFAULT_CYCLE_RESET_DAY = 1;
-const DEFAULT_THEME_MODE = 'dark';
+const DEFAULT_THEME_MODE: ThemeMode = 'dark';
 
 export const SettingsRepository = {
   getUserName(): string {
@@ -72,8 +72,8 @@ export const SettingsRepository = {
 
   getThemeMode(): ThemeMode {
     const val = this.get('theme_mode', DEFAULT_THEME_MODE);
-    if (val === 'light' || val === 'amethyst' || val === 'sapphire') return val;
-    return 'dark';
+    if (isValidTheme(val)) return val;
+    return DEFAULT_THEME_MODE;
   },
 
   setThemeMode(mode: ThemeMode): void {

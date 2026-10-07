@@ -12,6 +12,7 @@ import { ShieldCheck } from 'lucide-react-native';
 import { MonthlySummaryCard } from './MonthlySummaryCard';
 import { CategoryBurnCard } from './CategoryBurnCard';
 import { CardsSnapshotCard } from './CardsSnapshotCard';
+import { AccountsSnapshotCard } from './AccountsSnapshotCard';
 import { RecentActivityCard } from './RecentActivityCard';
 import { QuickActionTemplatesCard } from './QuickActionTemplatesCard';
 import { BudgetMicroAlertsCard } from './BudgetMicroAlertsCard';
@@ -74,6 +75,9 @@ export function DashboardCardRenderer({
 
     case 'notes':
       return <DashboardNoteBlock />;
+
+    case 'accounts_snapshot':
+      return <AccountsSnapshotCard onNavigateTab={onNavigateTab} />;
 
     case 'cards_snapshot':
       return <CardsSnapshotCard onNavigateTab={onNavigateTab} />;

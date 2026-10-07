@@ -32,7 +32,7 @@ import {
   calculateAvailableToSpend,
   calculateDailyPacing,
 } from '@/domain/financialCalculations';
-import { ThemeMode } from '@/theme';
+import { ThemeMode, isValidTheme } from '@/theme';
 
 interface FinancialState {
   isInitialized: boolean;
@@ -153,7 +153,7 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       try {
         if (NativeModules.AppTheme?.getTheme) {
           const nativeTheme = NativeModules.AppTheme.getTheme();
-          if (nativeTheme === 'light' || nativeTheme === 'dark' || nativeTheme === 'amethyst' || nativeTheme === 'sapphire') {
+          if (isValidTheme(nativeTheme)) {
             themeMode = nativeTheme;
           }
         }
