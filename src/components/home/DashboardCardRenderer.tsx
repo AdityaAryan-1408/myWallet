@@ -16,6 +16,7 @@ import { AccountsSnapshotCard } from './AccountsSnapshotCard';
 import { RecentActivityCard } from './RecentActivityCard';
 import { QuickActionTemplatesCard } from './QuickActionTemplatesCard';
 import { BudgetMicroAlertsCard } from './BudgetMicroAlertsCard';
+import { TemporaryTransactionsCard } from './TemporaryTransactionsCard';
 import { DashboardNoteBlock } from '@/components/dashboard';
 import {
   ResilienceGaugeAdapter,
@@ -84,6 +85,9 @@ export function DashboardCardRenderer({
 
     case 'recent_activity':
       return <RecentActivityCard onNavigateTab={onNavigateTab} />;
+
+    case 'temporary_transactions':
+      return <TemporaryTransactionsCard />;
 
     // Opt-in Analytics Cards
     case 'resilience_gauge':

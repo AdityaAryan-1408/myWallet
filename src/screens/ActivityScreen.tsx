@@ -26,10 +26,10 @@ import { Search, X, Receipt, Filter } from 'lucide-react-native';
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
 import { TransactionRow, TransactionDetailModal } from '@/components/activity';
 import { TransactionWithDetails, TransactionRepository } from '@/repositories';
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
-type FilterType = 'ALL' | 'EXPENSES' | 'INCOME' | 'TRANSFERS';
+type FilterType = 'ALL' | 'EXPENSES' | 'INCOME' | 'TRANSFERS' | 'ON BEHALF';
 
 interface DateGroup {
   date: string;
@@ -40,6 +40,8 @@ interface DateGroup {
 
 export default function ActivityScreen() {
   const { monthlyTotals, recentTransactions, refreshFinancials } = useFinancialStore();
+  const tempPending = useTemporaryTransactionStore((s) => s.pending);
+  const tempReturned = useTemporaryTransactionStore((s) => s.returned);
 
   const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,11 +57,12 @@ export default function ActivityScreen() {
 
   useEffect(() => {
     loadTransactions();
-  }, [loadTransactions, recentTransactions, monthlyTotals]);
+  }, [loadTransactions, recentTransactions, monthlyTotals, tempPending, tempReturned]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     refreshFinancials();
+    useTemporaryTransactionStore.getState().refresh();
     loadTransactions();
     setTimeout(() => setRefreshing(false), 400);
   };
@@ -76,20 +79,22 @@ export default function ActivityScreen() {
 
     return transactions.filter((tx) => {
       // Filter by Type
-      if (activeFilter === 'EXPENSES' && tx.type !== 'expense') return false;
+      if (activeFilter === 'EXPENSES' && (tx.type !== 'expense' || tx.is_temporary)) return false;
       if (activeFilter === 'INCOME' && tx.type !== 'income') return false;
       if (activeFilter === 'TRANSFERS' && tx.type !== 'transfer') return false;
+      if (activeFilter === 'ON BEHALF' && !tx.is_temporary) return false;
 
       // Filter by Search Query
       if (q) {
         const noteMatch = tx.note?.toLowerCase().includes(q) ?? false;
+        const personMatch = tx.person_name?.toLowerCase().includes(q) ?? false;
         const catMatch = tx.category_name?.toLowerCase().includes(q) ?? false;
         const subMatch = tx.subcategory_name?.toLowerCase().includes(q) ?? false;
         const amountMatch = `${tx.amount}`.includes(q) || `₹${tx.amount}`.includes(q);
         const accountMatch = tx.account_name?.toLowerCase().includes(q) ?? false;
         const cardMatch = tx.credit_card_name?.toLowerCase().includes(q) ?? false;
 
-        return noteMatch || catMatch || subMatch || amountMatch || accountMatch || cardMatch;
+        return noteMatch || personMatch || catMatch || subMatch || amountMatch || accountMatch || cardMatch;
       }
 
       return true;
@@ -118,9 +123,12 @@ export default function ActivityScreen() {
     const result: DateGroup[] = [];
 
     groupsMap.forEach((txList, dateKey) => {
-      // Calculate daily net
+      // Calculate daily net (excluding temporary advances so bank balance net is pure)
       let net = 0;
       for (const tx of txList) {
+        if (tx.is_temporary) {
+          continue;
+        }
         if (tx.type === 'income') {
           net += tx.amount;
         } else if (tx.type === 'expense') {
@@ -207,22 +215,28 @@ export default function ActivityScreen() {
         </Animated.View>
 
         {/* ─── Filter Tabs ─── */}
-        <Animated.View entering={FadeInDown.duration(500).delay(100)} style={styles.filterRow}>
-          {(['ALL', 'EXPENSES', 'INCOME', 'TRANSFERS'] as FilterType[]).map((filter) => {
-            const isActive = activeFilter === filter;
-            return (
-              <TouchableOpacity
-                key={filter}
-                style={[styles.filterPill, isActive && styles.filterPillActive]}
-                onPress={() => setActiveFilter(filter)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
-                  {filter}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <Animated.View entering={FadeInDown.duration(500).delay(100)}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {(['ALL', 'EXPENSES', 'INCOME', 'TRANSFERS', 'ON BEHALF'] as FilterType[]).map((filter) => {
+              const isActive = activeFilter === filter;
+              return (
+                <TouchableOpacity
+                  key={filter}
+                  style={[styles.filterPill, isActive && styles.filterPillActive]}
+                  onPress={() => setActiveFilter(filter)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                    {filter}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </Animated.View>
 
         {/* ─── Monthly Summary Card ─── */}

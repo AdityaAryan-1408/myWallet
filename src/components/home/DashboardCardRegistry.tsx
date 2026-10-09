@@ -89,6 +89,15 @@ export const DASHBOARD_CARD_REGISTRY: DashboardCardDefinition[] = [
     defaultVisible: true,
     defaultOrder: 7,
   },
+  {
+    id: 'temporary_transactions',
+    displayName: 'Paid on Behalf',
+    category: 'core',
+    description: 'Temporary advances and floating outlays pending reimbursement',
+    iconName: 'Handshake',
+    defaultVisible: true,
+    defaultOrder: 8,
+  },
 
   // ── Insights & Resilience Cards (Opt-in) ──
   {

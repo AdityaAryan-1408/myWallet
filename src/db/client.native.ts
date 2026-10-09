@@ -17,6 +17,7 @@ import {
   CREATE_USER_SETTINGS_TABLE,
   CREATE_BUDGETS_TABLE,
   CREATE_IN_APP_NOTIFICATIONS_TABLE,
+  CREATE_TEMPORARY_TRANSACTIONS_TABLE,
   CREATE_INDEXES,
 } from './schema';
 import { SEED_DATA } from './seed';
@@ -66,7 +67,15 @@ export function initDatabase(): void {
     db.execSync(CREATE_USER_SETTINGS_TABLE);
     db.execSync(CREATE_BUDGETS_TABLE);
     db.execSync(CREATE_IN_APP_NOTIFICATIONS_TABLE);
+    db.execSync(CREATE_TEMPORARY_TRANSACTIONS_TABLE);
     db.execSync(CREATE_INDEXES);
+
+    // Migration: ensure temporary_transactions table exists on updated app
+    try {
+      db.execSync(CREATE_TEMPORARY_TRANSACTIONS_TABLE);
+    } catch {
+      // Table already exists
+    }
 
     // Migration: ensure exclude_from_total column exists on accounts
     try {

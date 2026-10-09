@@ -64,4 +64,6 @@ export type {
   SavingsAutopilot,
   VelocityRadar,
 } from './aiRepository';
+export { TemporaryTransactionRepository } from './temporaryTransactionRepository';
+
 

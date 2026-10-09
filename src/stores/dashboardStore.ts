@@ -24,17 +24,18 @@ export const DEFAULT_DASHBOARD_CARDS: DashboardCardConfig[] = [
   { cardId: 'accounts_snapshot', visible: true, pinned: false, order: 5 },
   { cardId: 'cards_snapshot', visible: true, pinned: false, order: 6 },
   { cardId: 'recent_activity', visible: true, pinned: false, order: 7 },
+  { cardId: 'temporary_transactions', visible: true, pinned: false, order: 8 },
   // Opt-in analytics cards
-  { cardId: 'resilience_gauge', visible: false, pinned: false, order: 8 },
-  { cardId: 'no_spend_heatmap', visible: false, pinned: false, order: 9 },
-  { cardId: 'velocity_audit', visible: false, pinned: false, order: 10 },
-  { cardId: 'day_of_week', visible: false, pinned: false, order: 11 },
-  { cardId: 'time_distribution', visible: false, pinned: false, order: 12 },
-  { cardId: 'month_comparison', visible: false, pinned: false, order: 13 },
-  { cardId: 'merchant_intelligence', visible: false, pinned: false, order: 14 },
-  { cardId: 'income_expense_ratio', visible: false, pinned: false, order: 15 },
-  { cardId: 'category_sparklines', visible: false, pinned: false, order: 16 },
-  { cardId: 'monthly_digest', visible: false, pinned: false, order: 17 },
+  { cardId: 'resilience_gauge', visible: false, pinned: false, order: 9 },
+  { cardId: 'no_spend_heatmap', visible: false, pinned: false, order: 10 },
+  { cardId: 'velocity_audit', visible: false, pinned: false, order: 11 },
+  { cardId: 'day_of_week', visible: false, pinned: false, order: 12 },
+  { cardId: 'time_distribution', visible: false, pinned: false, order: 13 },
+  { cardId: 'month_comparison', visible: false, pinned: false, order: 14 },
+  { cardId: 'merchant_intelligence', visible: false, pinned: false, order: 15 },
+  { cardId: 'income_expense_ratio', visible: false, pinned: false, order: 16 },
+  { cardId: 'category_sparklines', visible: false, pinned: false, order: 17 },
+  { cardId: 'monthly_digest', visible: false, pinned: false, order: 18 },
 ];
 
 const STORAGE_KEY = 'dashboard_layout_config_v1';

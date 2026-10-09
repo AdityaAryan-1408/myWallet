@@ -41,6 +41,7 @@ import {
   Sliders,
   Pin,
   Landmark,
+  Handshake,
 } from 'lucide-react-native';
 
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
@@ -70,6 +71,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size: number; color: string
   Target,
   Sparkles,
   Landmark,
+  Handshake,
 };
 
 type CategoryFilter = 'all' | 'core' | 'insights' | 'habits' | 'tools';

@@ -9,6 +9,7 @@ export { AccountsSnapshotCard } from './AccountsSnapshotCard';
 export { RecentActivityCard } from './RecentActivityCard';
 export { QuickActionTemplatesCard } from './QuickActionTemplatesCard';
 export { BudgetMicroAlertsCard } from './BudgetMicroAlertsCard';
+export { TemporaryTransactionsCard } from './TemporaryTransactionsCard';
 export { DashboardCardWrapper } from './DashboardCardWrapper';
 export { DashboardCardRenderer } from './DashboardCardRenderer';
 export { DashboardCardPicker } from './DashboardCardPicker';

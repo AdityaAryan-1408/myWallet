@@ -34,6 +34,7 @@ import {
   Music,
   Gamepad2,
   Book,
+  Handshake,
   LucideIcon,
 } from 'lucide-react-native';
 
@@ -66,6 +67,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Music,
   Gamepad2,
   Book,
+  Handshake,
 };
 
 interface CategoryIconProps {

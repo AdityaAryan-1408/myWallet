@@ -20,19 +20,20 @@ import {
   ScrollView,
   Platform,
   Modal,
+  Switch,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { X, Calendar, Check, ArrowRightLeft, Sparkles } from 'lucide-react-native';
+import { X, Calendar, Check, ArrowRightLeft, Sparkles, Handshake } from 'lucide-react-native';
 
 import { QuickCalcKeypad } from '@/components/transaction/QuickCalcKeypad';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { PaymentSourceSelector } from '@/components/transaction/PaymentSourceSelector';
 import { evaluateExpression } from '@/utils/mathEvaluator';
-import { TransactionRepository, MerchantRepository } from '@/repositories';
+import { TransactionRepository, MerchantRepository, TemporaryTransactionRepository } from '@/repositories';
 import { AiIntelligenceService } from '@/services';
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
 import { TransactionType, CategoryType } from '@/db/schema';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
 
@@ -78,6 +79,8 @@ export default function AddTransactionScreen() {
     return secondary?.id || accounts[1]?.id || '';
   });
   const [note, setNote] = useState<string>('');
+  const [isTemporary, setIsTemporary] = useState<boolean>(false);
+  const [personName, setPersonName] = useState<string>('');
 
   // Auto-sync default source to primary bank account if initialized before accounts loaded
   React.useEffect(() => {
@@ -184,6 +187,52 @@ export default function AddTransactionScreen() {
 
     const now = new Date();
     const time = now.toTimeString().split(' ')[0];
+
+    // Branch: Paid on Behalf (Temporary Advance)
+    // Does NOT alter bank balances or available to spend calculations
+    if (isTemporary) {
+      let paymentSourceName: string | null = null;
+      if (sourceType === 'account') {
+        const acc = accounts.find((a) => a.id === sourceId);
+        paymentSourceName = acc ? acc.name : 'Bank Account';
+      } else if (sourceType === 'credit_card') {
+        const card = creditCards.find((c) => c.id === sourceId);
+        paymentSourceName = card ? card.name : 'Credit Card';
+      }
+
+      const tempTxId = `temp_tx_${Date.now()}`;
+      const fallbackTitle = personName.trim()
+        ? `Paid for ${personName.trim()}`
+        : 'Paid on Behalf';
+      const tempTitle = note.trim() || fallbackTitle;
+
+      TemporaryTransactionRepository.create({
+        id: tempTxId,
+        title: tempTitle,
+        person_name: personName.trim() || null,
+        amount: evaluatedAmount,
+        payment_source_type: sourceType,
+        payment_source_id: sourceId || null,
+        payment_source_name: paymentSourceName,
+        category_id: selectedCategoryId || null,
+        date: transactionDate,
+        time,
+        is_returned: 0,
+        returned_date: null,
+        notes: note.trim() || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Reactive store update
+      useTemporaryTransactionStore.getState().refresh();
+      refreshFinancials();
+
+      // Close screen
+      router.back();
+      return;
+    }
+
     const txId = `tx_${Date.now()}`;
 
     const validAccountId =
@@ -277,8 +326,11 @@ export default function AddTransactionScreen() {
                 setSelectedSubcategoryId(null);
                 if (t === 'income') {
                   setSelectedCategoryId('cat_salary');
+                  setIsTemporary(false);
                 } else if (t === 'expense') {
                   setSelectedCategoryId('cat_food');
+                } else if (t === 'transfer') {
+                  setIsTemporary(false);
                 }
               }}
               activeOpacity={0.7}
@@ -429,6 +481,51 @@ export default function AddTransactionScreen() {
           )}
         </View>
 
+        {/* ─── Paid on Behalf (Temporary Advance) Toggle ─── */}
+        {type === 'expense' && (
+          <View style={[styles.tempAdvanceCard, isTemporary && styles.tempAdvanceCardActive]}>
+            <View style={styles.tempAdvanceHeader}>
+              <View style={[styles.tempAdvanceIconWrap, isTemporary && styles.tempAdvanceIconWrapActive]}>
+                <Handshake size={18} color={isTemporary ? Colors.chartreuse : Colors.onSurfaceVariant} />
+              </View>
+              <View style={styles.tempAdvanceInfo}>
+                <Text style={styles.tempAdvanceTitle}>Paid on Behalf (Temporary Advance)</Text>
+                <Text style={styles.tempAdvanceSubtitle}>
+                  {isTemporary
+                    ? "Floating outlay • Won't affect Available to Spend"
+                    : 'Turn on if paying for a friend or someone else'}
+                </Text>
+              </View>
+              <Switch
+                value={isTemporary}
+                onValueChange={(val) => {
+                  Haptics.selectionAsync();
+                  setIsTemporary(val);
+                }}
+                trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.chartreuse }}
+                thumbColor={isTemporary ? '#000000' : Colors.onSurfaceVariant}
+              />
+            </View>
+
+            {isTemporary && (
+              <View style={styles.tempAdvanceBody}>
+                <TextInput
+                  style={styles.tempPersonInput}
+                  placeholder="Who is this for? (e.g. Rahul, John, Team)"
+                  placeholderTextColor={Colors.onSurfaceVariant}
+                  value={personName}
+                  onChangeText={setPersonName}
+                />
+                <View style={styles.tempNoticeBox}>
+                  <Text style={styles.tempNoticeText}>
+                    Tracked separately in "Paid on Behalf" card. Bank balance & Available to Spend stay intact.
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ─── Integrated Quick Calc Keypad ─── */}
         <View style={styles.keypadSection}>
           <QuickCalcKeypad
@@ -442,15 +539,27 @@ export default function AddTransactionScreen() {
         <TouchableOpacity
           style={[
             styles.saveButton,
+            isTemporary && styles.saveButtonTemporary,
             evaluatedAmount <= 0 && styles.saveButtonDisabled,
           ]}
           onPress={handleSave}
           disabled={evaluatedAmount <= 0}
           activeOpacity={0.8}
         >
-          <Check size={18} color={Colors.onPrimary} strokeWidth={2.8} />
-          <Text style={styles.saveButtonText}>
-            Save {type.toUpperCase()} • ₹{evaluatedAmount.toLocaleString('en-IN')}
+          <Check
+            size={18}
+            color={isTemporary ? '#000000' : Colors.onPrimary}
+            strokeWidth={2.8}
+          />
+          <Text
+            style={[
+              styles.saveButtonText,
+              isTemporary && styles.saveButtonTextTemporary,
+            ]}
+          >
+            {isTemporary
+              ? `Record Temporary Advance • ₹${evaluatedAmount.toLocaleString('en-IN')}`
+              : `Save ${type.toUpperCase()} • ₹${evaluatedAmount.toLocaleString('en-IN')}`}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -842,4 +951,91 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 15,
   },
+  // Paid on Behalf (Temporary Advance) Styles
+  tempAdvanceCard: {
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: Shapes.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+    marginBottom: Spacing.md,
+  },
+  tempAdvanceCardActive: {
+    borderColor: 'rgba(200, 243, 34, 0.4)',
+    backgroundColor: 'rgba(200, 243, 34, 0.04)',
+  },
+  tempAdvanceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  tempAdvanceIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  tempAdvanceIconWrapActive: {
+    backgroundColor: 'rgba(200, 243, 34, 0.15)',
+    borderColor: Colors.chartreuse,
+  },
+  tempAdvanceInfo: {
+    flex: 1,
+  },
+  tempAdvanceTitle: {
+    ...Typography.bodySmMedium,
+    color: Colors.onSurface,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  tempAdvanceSubtitle: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  tempAdvanceBody: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.strokeSubtle,
+    gap: 8,
+  },
+  tempPersonInput: {
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: Shapes.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: Colors.onSurface,
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  tempNoticeBox: {
+    backgroundColor: 'rgba(200, 243, 34, 0.08)',
+    borderRadius: Shapes.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(200, 243, 34, 0.18)',
+  },
+  tempNoticeText: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  saveButtonTemporary: {
+    backgroundColor: Colors.chartreuse,
+  },
+  saveButtonTextTemporary: {
+    color: '#000000',
+    fontWeight: '800',
+  },
 });
+

@@ -25,13 +25,19 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
   const isIncome = transaction.type === 'income';
   const isTransfer = transaction.type === 'transfer';
   const isCreditCard = Boolean(transaction.credit_card_id);
+  const isTemp = Boolean(transaction.is_temporary);
+  const isReturned = transaction.is_returned === 1;
 
   // Color selection
-  const iconColor = transaction.category_color || (isIncome ? Colors.income : isTransfer ? Colors.transfer : Colors.chartreuse);
+  const iconColor = isTemp
+    ? Colors.chartreuse
+    : transaction.category_color || (isIncome ? Colors.income : isTransfer ? Colors.transfer : Colors.chartreuse);
   const iconBg = `${iconColor}18`;
 
   // Amount formatting
-  const amountColor = isIncome
+  const amountColor = isTemp
+    ? (isReturned ? Colors.income : Colors.chartreuse)
+    : isIncome
     ? Colors.income
     : isTransfer
     ? Colors.transfer
@@ -41,7 +47,9 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
 
   // Type label badge
   let typeTag = 'DEBIT';
-  if (isIncome) {
+  if (isTemp) {
+    typeTag = isReturned ? 'RETURNED' : 'ON BEHALF';
+  } else if (isIncome) {
     typeTag = 'INFLOW';
   } else if (isTransfer) {
     typeTag = 'TRANSFER';
@@ -50,7 +58,7 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
   }
 
   // Account / Source display
-  let sourceText = transaction.account_name || transaction.credit_card_name || 'Primary Account';
+  let sourceText = transaction.account_name || transaction.credit_card_name || (isTemp ? 'Temporary Advance' : 'Primary Account');
   if (isTransfer && transaction.dest_account_name) {
     sourceText = `${transaction.account_name || 'Source'} → ${transaction.dest_account_name}`;
   }
@@ -58,8 +66,13 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
   const timeStr = transaction.time ? transaction.time.slice(0, 5) : '';
 
   // Title display
-  const titleText = transaction.note?.trim() || transaction.category_name || (isTransfer ? 'Transfer' : 'Transaction');
-  const categoryTag = transaction.subcategory_name || transaction.category_name || (isTransfer ? 'Transfer' : 'General');
+  let titleText = transaction.note?.trim() || transaction.category_name || (isTransfer ? 'Transfer' : 'Transaction');
+  if (isTemp && transaction.person_name) {
+    titleText = `${transaction.person_name} • ${transaction.note?.trim() || 'Paid on Behalf'}`;
+  }
+  const categoryTag = isTemp
+    ? 'PAID ON BEHALF'
+    : (transaction.subcategory_name || transaction.category_name || (isTransfer ? 'Transfer' : 'General'));
 
   return (
     <TouchableOpacity
@@ -70,7 +83,7 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
       {/* Category Icon Circle */}
       <View style={[styles.iconCircle, { backgroundColor: iconBg }]}>
         <CategoryIcon
-          name={transaction.category_icon || (isIncome ? 'Briefcase' : isTransfer ? 'ArrowRightLeft' : 'ShoppingBag')}
+          name={isTemp ? 'Handshake' : (transaction.category_icon || (isIncome ? 'Briefcase' : isTransfer ? 'ArrowRightLeft' : 'ShoppingBag'))}
           size={18}
           color={iconColor}
         />
@@ -82,8 +95,8 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
           <Text style={styles.title} numberOfLines={1}>
             {titleText}
           </Text>
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryBadgeText} numberOfLines={1}>
+          <View style={[styles.categoryBadge, isTemp && styles.tempCategoryBadge]}>
+            <Text style={[styles.categoryBadgeText, isTemp && styles.tempCategoryBadgeText]} numberOfLines={1}>
               {categoryTag.toUpperCase()}
             </Text>
           </View>
@@ -99,7 +112,15 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
         <Text style={[styles.amountText, { color: amountColor }]}>
           {amountSign}₹{transaction.amount.toLocaleString('en-IN')}
         </Text>
-        <Text style={[styles.typeTag, isCreditCard && styles.creditTag, isIncome && styles.incomeTag]}>
+        <Text
+          style={[
+            styles.typeTag,
+            isCreditCard && styles.creditTag,
+            isIncome && styles.incomeTag,
+            isTemp && !isReturned && styles.tempTag,
+            isTemp && isReturned && styles.incomeTag,
+          ]}
+        >
           {typeTag}
         </Text>
       </View>
@@ -183,5 +204,17 @@ const styles = StyleSheet.create({
   },
   incomeTag: {
     color: Colors.income,
+  },
+  tempTag: {
+    color: Colors.chartreuse,
+    fontWeight: '700',
+  },
+  tempCategoryBadge: {
+    backgroundColor: 'rgba(200, 243, 34, 0.12)',
+    borderColor: 'rgba(200, 243, 34, 0.3)',
+  },
+  tempCategoryBadgeText: {
+    color: Colors.chartreuse,
+    fontWeight: '700',
   },
 });

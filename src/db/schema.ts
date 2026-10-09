@@ -69,6 +69,10 @@ export interface Transaction {
   expression?: string | null;
   created_at: string;
   updated_at: string;
+  is_temporary?: boolean;
+  person_name?: string | null;
+  is_returned?: number;
+  returned_date?: string | null;
 }
 
 export interface Reservation {
@@ -155,6 +159,24 @@ export interface Budget {
 export interface UserSetting {
   key: string;
   value: string;
+  updated_at: string;
+}
+
+export interface TemporaryTransaction {
+  id: string;
+  title: string;
+  person_name?: string | null;
+  amount: number;
+  payment_source_type: 'account' | 'credit_card' | 'none';
+  payment_source_id?: string | null;
+  payment_source_name?: string | null;
+  category_id?: string | null;
+  date: string;
+  time: string;
+  is_returned: number; // 0 = pending, 1 = returned/reimbursed
+  returned_date?: string | null;
+  notes?: string | null;
+  created_at: string;
   updated_at: string;
 }
 
@@ -317,6 +339,26 @@ CREATE TABLE IF NOT EXISTS budgets (
 );
 `;
 
+export const CREATE_TEMPORARY_TRANSACTIONS_TABLE = `
+CREATE TABLE IF NOT EXISTS temporary_transactions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  person_name TEXT,
+  amount REAL NOT NULL,
+  payment_source_type TEXT DEFAULT 'none',
+  payment_source_id TEXT,
+  payment_source_name TEXT,
+  category_id TEXT,
+  date TEXT NOT NULL,
+  time TEXT NOT NULL,
+  is_returned INTEGER NOT NULL DEFAULT 0,
+  returned_date TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export const CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -327,4 +369,5 @@ CREATE INDEX IF NOT EXISTS idx_people_debts_settled ON people_debts(is_settled);
 CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id);
 CREATE INDEX IF NOT EXISTS idx_debt_repayments_debt ON debt_repayments(debt_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON in_app_notifications(is_read, is_dismissed);
+CREATE INDEX IF NOT EXISTS idx_temp_tx_returned ON temporary_transactions(is_returned, date DESC);
 `;

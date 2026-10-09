@@ -44,29 +44,48 @@ export function RecentActivityCard({ onNavigateTab }: RecentActivityCardProps) {
       ) : (
         recentTransactions.slice(0, 5).map((tx) => {
           const isIncome = tx.type === 'income';
+          const isTemp = Boolean(tx.is_temporary);
+          const isReturned = tx.is_returned === 1;
+
+          const iconName = isTemp ? 'Handshake' : isIncome ? 'Briefcase' : 'ShoppingBag';
+          const iconColor = isTemp ? Colors.chartreuse : isIncome ? Colors.income : Colors.expense;
+          const iconBg = isTemp
+            ? 'rgba(200, 243, 34, 0.15)'
+            : isIncome
+            ? 'rgba(0, 230, 118, 0.12)'
+            : 'rgba(255, 82, 82, 0.12)';
+
+          const title = isTemp && tx.person_name
+            ? `${tx.person_name} • ${tx.note || 'Paid on Behalf'}`
+            : (tx.note || (isTemp ? 'Paid on Behalf' : 'Transaction'));
+
+          const subtitle = isTemp
+            ? `${tx.date} • ${isReturned ? 'Returned' : 'Paid on Behalf'}`
+            : `${tx.date} • ${tx.time.slice(0, 5)}`;
+
+          const tag = isTemp
+            ? (isReturned ? 'RETURNED' : 'ON BEHALF')
+            : (isIncome ? 'INFLOW' : 'DEBIT');
+
           return (
             <View key={tx.id} style={styles.txRow}>
               <View
                 style={[
                   styles.txIconCircle,
-                  {
-                    backgroundColor: isIncome
-                      ? 'rgba(0, 230, 118, 0.12)'
-                      : 'rgba(255, 82, 82, 0.12)',
-                  },
+                  { backgroundColor: iconBg },
                 ]}
               >
                 <CategoryIcon
-                  name={isIncome ? 'Briefcase' : 'ShoppingBag'}
+                  name={iconName}
                   size={18}
-                  color={isIncome ? Colors.income : Colors.expense}
+                  color={iconColor}
                 />
               </View>
 
               <View style={styles.txInfo}>
-                <Text style={styles.txTitle}>{tx.note || 'Transaction'}</Text>
+                <Text style={styles.txTitle} numberOfLines={1}>{title}</Text>
                 <Text style={styles.txSub}>
-                  {tx.date} • {tx.time.slice(0, 5)}
+                  {subtitle}
                 </Text>
               </View>
 
@@ -74,13 +93,25 @@ export function RecentActivityCard({ onNavigateTab }: RecentActivityCardProps) {
                 <Text
                   style={[
                     styles.txAmount,
-                    { color: isIncome ? Colors.income : Colors.onSurface },
+                    {
+                      color: isTemp
+                        ? (isReturned ? Colors.income : Colors.chartreuse)
+                        : isIncome
+                        ? Colors.income
+                        : Colors.onSurface,
+                    },
                   ]}
                 >
                   {isIncome ? '+' : '−'}₹{tx.amount.toLocaleString('en-IN')}
                 </Text>
-                <Text style={styles.txTag}>
-                  {isIncome ? 'INFLOW' : 'DEBIT'}
+                <Text
+                  style={[
+                    styles.txTag,
+                    isTemp && !isReturned && styles.txTagTemp,
+                    isTemp && isReturned && styles.txTagReturned,
+                  ]}
+                >
+                  {tag}
                 </Text>
               </View>
             </View>
@@ -160,6 +191,14 @@ const styles = StyleSheet.create({
     ...Typography.labelCaps,
     fontSize: 9,
     color: Colors.onSurfaceVariant,
+  },
+  txTagTemp: {
+    color: Colors.chartreuse,
+    fontWeight: '700',
+  },
+  txTagReturned: {
+    color: Colors.income,
+    fontWeight: '700',
   },
   emptyRecentBox: {
     paddingVertical: Spacing.md,

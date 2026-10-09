@@ -35,11 +35,13 @@ import {
   Check,
   Edit2,
   ArrowRightLeft,
+  RotateCcw,
+  Handshake,
 } from 'lucide-react-native';
 
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
-import { TransactionWithDetails, TransactionRepository } from '@/repositories';
-import { useFinancialStore } from '@/stores';
+import { TransactionWithDetails, TransactionRepository, TemporaryTransactionRepository } from '@/repositories';
+import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
 export interface TransactionDetailModalProps {
@@ -66,8 +68,12 @@ export function TransactionDetailModal({
   const isIncome = transaction.type === 'income';
   const isTransfer = transaction.type === 'transfer';
   const isCreditCard = Boolean(transaction.credit_card_id);
+  const isTemp = Boolean(transaction.is_temporary);
+  const isReturned = transaction.is_returned === 1;
 
-  const amountColor = isIncome
+  const amountColor = isTemp
+    ? (isReturned ? Colors.income : Colors.chartreuse)
+    : isIncome
     ? Colors.income
     : isTransfer
     ? Colors.transfer
@@ -75,8 +81,75 @@ export function TransactionDetailModal({
 
   const amountSign = isIncome ? '+' : isTransfer ? '⇄ ' : '−';
 
+  const handleMarkReturned = () => {
+    Alert.alert(
+      'Mark as Returned',
+      `Have you received ₹${transaction.amount.toLocaleString('en-IN')} back${
+        transaction.person_name ? ` from ${transaction.person_name}` : ''
+      }?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark Returned',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              try {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch {}
+            }
+            TemporaryTransactionRepository.markAsReturned(transaction.id);
+            useTemporaryTransactionStore.getState().refresh();
+            refreshFinancials();
+            onUpdated?.();
+            onClose();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMarkPending = () => {
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {}
+    }
+    TemporaryTransactionRepository.markAsPending(transaction.id);
+    useTemporaryTransactionStore.getState().refresh();
+    refreshFinancials();
+    onUpdated?.();
+    onClose();
+  };
+
   // Handle Delete with balance restoration
   const handleDelete = () => {
+    if (isTemp) {
+      Alert.alert(
+        'Delete Record',
+        `Are you sure you want to delete this temporary advance of ₹${transaction.amount.toLocaleString('en-IN')}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              if (Platform.OS !== 'web') {
+                try {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                } catch {}
+              }
+              TemporaryTransactionRepository.delete(transaction.id);
+              useTemporaryTransactionStore.getState().refresh();
+              refreshFinancials();
+              onUpdated?.();
+              onClose();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     Alert.alert(
       'Delete Transaction',
       `Are you sure you want to delete this ${transaction.type}? The financial balances will be automatically restored.`,
@@ -173,6 +246,7 @@ export function TransactionDetailModal({
               <View
                 style={[
                   styles.typePill,
+                  isTemp && styles.tempPill,
                   isIncome && styles.incomePill,
                   isTransfer && styles.transferPill,
                 ]}
@@ -180,11 +254,14 @@ export function TransactionDetailModal({
                 <Text
                   style={[
                     styles.typePillText,
+                    isTemp && { color: isReturned ? Colors.income : Colors.chartreuse },
                     isIncome && { color: Colors.income },
                     isTransfer && { color: Colors.transfer },
                   ]}
                 >
-                  {transaction.type.toUpperCase()}
+                  {isTemp
+                    ? (isReturned ? 'RETURNED ADVANCE' : 'PAID ON BEHALF')
+                    : transaction.type.toUpperCase()}
                 </Text>
               </View>
 
@@ -279,6 +356,40 @@ export function TransactionDetailModal({
                   <Text style={styles.metaSub}>{transaction.time ? transaction.time.slice(0, 5) : '00:00'}</Text>
                 </View>
               </View>
+
+              {/* Recipient Friend / Person (if temporary) */}
+              {isTemp && transaction.person_name ? (
+                <View style={styles.metaRow}>
+                  <View style={styles.metaLeft}>
+                    <View style={styles.miniIconCircle}>
+                      <Handshake size={15} color={Colors.chartreuse} />
+                    </View>
+                    <Text style={styles.metaLabel}>Paid For</Text>
+                  </View>
+                  <Text style={[styles.metaValue, { color: Colors.chartreuse, fontWeight: '700' }]}>
+                    {transaction.person_name}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Status (if temporary) */}
+              {isTemp && (
+                <View style={styles.metaRow}>
+                  <View style={styles.metaLeft}>
+                    <View style={styles.miniIconCircle}>
+                      {isReturned ? (
+                        <Check size={15} color={Colors.income} />
+                      ) : (
+                        <Clock size={15} color={Colors.warning} />
+                      )}
+                    </View>
+                    <Text style={styles.metaLabel}>Reimbursement</Text>
+                  </View>
+                  <Text style={[styles.metaValue, { color: isReturned ? Colors.income : Colors.warning, fontWeight: '700' }]}>
+                    {isReturned ? `Returned (${transaction.returned_date || transaction.date})` : 'Waiting for Return'}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Note Section (with inline edit) */}
@@ -326,6 +437,29 @@ export function TransactionDetailModal({
               )}
             </View>
 
+            {/* Mark as Returned / Reopen CTA (for temporary advances) */}
+            {isTemp && (
+              !isReturned ? (
+                <TouchableOpacity
+                  style={styles.markReturnedCta}
+                  onPress={handleMarkReturned}
+                  activeOpacity={0.8}
+                >
+                  <Check size={16} color="#000000" strokeWidth={2.5} />
+                  <Text style={styles.markReturnedCtaText}>Mark as Returned / Reimbursed</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.reopenCta}
+                  onPress={handleMarkPending}
+                  activeOpacity={0.8}
+                >
+                  <RotateCcw size={15} color={Colors.onSurface} />
+                  <Text style={styles.reopenCtaText}>Reopen as Pending Advance</Text>
+                </TouchableOpacity>
+              )
+            )}
+
             {/* Delete CTA button */}
             <TouchableOpacity
               style={styles.deleteCta}
@@ -333,7 +467,9 @@ export function TransactionDetailModal({
               activeOpacity={0.8}
             >
               <Trash2 size={16} color={Colors.expense} />
-              <Text style={styles.deleteCtaText}>Delete Transaction</Text>
+              <Text style={styles.deleteCtaText}>
+                {isTemp ? 'Delete Advance Record' : 'Delete Transaction'}
+              </Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -569,6 +705,44 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     borderWidth: 1,
     borderColor: Colors.strokeBright,
+  },
+  tempPill: {
+    backgroundColor: 'rgba(200, 243, 34, 0.12)',
+    borderColor: 'rgba(200, 243, 34, 0.3)',
+  },
+  markReturnedCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.chartreuse,
+    marginTop: 4,
+  },
+  markReturnedCtaText: {
+    ...Typography.bodyMdMedium,
+    color: '#000000',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  reopenCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHighest,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+    marginTop: 4,
+  },
+  reopenCtaText: {
+    ...Typography.bodyMdMedium,
+    color: Colors.onSurface,
+    fontWeight: '600',
+    fontSize: 13,
   },
   deleteCta: {
     flexDirection: 'row',

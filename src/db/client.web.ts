@@ -13,10 +13,87 @@ const categoryMap = new Map(SEED_DATA.categories.map((c) => [c.id, c]));
 const accountMap = new Map(SEED_DATA.accounts.map((a) => [a.id, a]));
 const cardMap = new Map(SEED_DATA.creditCards.map((c) => [c.id, c]));
 
+let inMemoryTemporaryTransactions: any[] = [
+  {
+    id: 'temp_seed_1',
+    title: 'Dinner at Bistro',
+    person_name: 'Rahul',
+    amount: 1450,
+    payment_source_type: 'account',
+    payment_source_id: 'acc_main',
+    payment_source_name: 'HDFC Bank',
+    category_id: 'cat_food',
+    date: new Date().toISOString().split('T')[0],
+    time: '19:30:00',
+    is_returned: 0,
+    returned_date: null,
+    notes: 'Paid for Rahul, will UPI back by Sunday',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
 // In-memory mock storage for web preview
 const mockDb = {
   execSync: (_sql: string) => {},
-  runSync: (_sql: string, _params?: any[]) => ({ changes: 0, lastInsertRowId: 0 }),
+  runSync: (sql: string, params?: any[]) => {
+    if (sql.includes('INSERT INTO temporary_transactions') && params) {
+      const [
+        id,
+        title,
+        person_name,
+        amount,
+        payment_source_type,
+        payment_source_id,
+        payment_source_name,
+        category_id,
+        date,
+        time,
+        is_returned,
+        returned_date,
+        notes,
+        created_at,
+        updated_at,
+      ] = params;
+      inMemoryTemporaryTransactions.unshift({
+        id,
+        title,
+        person_name,
+        amount,
+        payment_source_type,
+        payment_source_id,
+        payment_source_name,
+        category_id,
+        date,
+        time,
+        is_returned: is_returned ?? 0,
+        returned_date: returned_date ?? null,
+        notes,
+        created_at,
+        updated_at,
+      });
+      return { changes: 1, lastInsertRowId: 1 };
+    }
+    if (sql.includes('UPDATE temporary_transactions SET is_returned') && params) {
+      const isReturnedVal = params[0];
+      const returnedDateVal = params[1];
+      const updatedAtVal = params[2];
+      const id = params[3];
+      const item = inMemoryTemporaryTransactions.find((t) => t.id === id);
+      if (item) {
+        item.is_returned = isReturnedVal;
+        item.returned_date = returnedDateVal;
+        item.updated_at = updatedAtVal;
+      }
+      return { changes: 1, lastInsertRowId: 0 };
+    }
+    if (sql.includes('DELETE FROM temporary_transactions') && params) {
+      const id = params[0];
+      inMemoryTemporaryTransactions = inMemoryTemporaryTransactions.filter((t) => t.id !== id);
+      return { changes: 1, lastInsertRowId: 0 };
+    }
+    return { changes: 0, lastInsertRowId: 0 };
+  },
   getAllSync: <T>(sql: string, _params?: any[]): T[] => {
     // 1. Category aggregation queries (Category Burn, Donut, Category Analytics)
     if (sql.includes('FROM transactions') && (sql.includes('GROUP BY') || sql.includes('category_id'))) {
@@ -111,10 +188,32 @@ const mockDb = {
       return SEED_DATA.budgets as unknown as T[];
     }
 
+    // 9. Temporary transactions query
+    if (sql.includes('FROM temporary_transactions')) {
+      let result = [...inMemoryTemporaryTransactions];
+      if (sql.includes('is_returned = 0')) {
+        result = result.filter((t) => t.is_returned === 0);
+      } else if (sql.includes('is_returned = 1')) {
+        result = result.filter((t) => t.is_returned === 1);
+      }
+      return result as unknown as T[];
+    }
+
     return [];
   },
 
-  getFirstSync: <T>(sql: string, _params?: any[]): T | null => {
+  getFirstSync: <T>(sql: string, params?: any[]): T | null => {
+    if (sql.includes('FROM temporary_transactions') && sql.includes('SUM(amount)')) {
+      const sum = inMemoryTemporaryTransactions
+        .filter((t) => t.is_returned === 0)
+        .reduce((acc, t) => acc + (t.amount || 0), 0);
+      return { total: sum } as unknown as T;
+    }
+    if (sql.includes('FROM temporary_transactions')) {
+      const id = params?.[0];
+      const found = inMemoryTemporaryTransactions.find((t) => t.id === id);
+      return (found || inMemoryTemporaryTransactions[0] || null) as unknown as T;
+    }
     if (sql.includes('COUNT(*)')) {
       return { count: SEED_DATA.categories.length } as unknown as T;
     }

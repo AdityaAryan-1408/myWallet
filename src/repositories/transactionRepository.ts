@@ -34,12 +34,55 @@ export interface TransactionWithDetails extends Transaction {
 }
 
 export const TransactionRepository = {
-  getRecent(limit: number = 20): Transaction[] {
+  getRecent(limit: number = 20, includeTemporary: boolean = true): Transaction[] {
     const db = getDatabase();
-    return db.getAllSync<Transaction>(
+    const standard = db.getAllSync<Transaction>(
       'SELECT * FROM transactions ORDER BY date DESC, time DESC LIMIT ?;',
       [limit]
     );
+
+    if (!includeTemporary) {
+      return standard;
+    }
+
+    try {
+      const tempRows = db.getAllSync<any>(
+        'SELECT * FROM temporary_transactions ORDER BY date DESC, time DESC LIMIT ?;',
+        [limit]
+      );
+
+      const mappedTemp: Transaction[] = tempRows.map((t) => ({
+        id: t.id,
+        type: 'expense' as const,
+        amount: t.amount,
+        account_id: t.payment_source_type === 'account' ? t.payment_source_id : null,
+        dest_account_id: null,
+        credit_card_id: t.payment_source_type === 'credit_card' ? t.payment_source_id : null,
+        category_id: t.category_id,
+        subcategory_id: null,
+        date: t.date,
+        time: t.time,
+        note: t.notes || t.title,
+        expression: null,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        is_temporary: true,
+        is_returned: t.is_returned,
+        person_name: t.person_name,
+        returned_date: t.returned_date,
+      }));
+
+      const merged = [...standard, ...mappedTemp];
+      merged.sort((a, b) => {
+        const dateCmp = b.date.localeCompare(a.date);
+        if (dateCmp !== 0) return dateCmp;
+        return (b.time || '').localeCompare(a.time || '');
+      });
+
+      return merged.slice(0, limit);
+    } catch {
+      return standard;
+    }
   },
 
   getTotalCount(): number {
@@ -344,9 +387,9 @@ export const TransactionRepository = {
     db.runSync('DELETE FROM transactions WHERE id = ?;', [id]);
   },
 
-  getAllWithDetails(): TransactionWithDetails[] {
+  getAllWithDetails(includeTemporary: boolean = true): TransactionWithDetails[] {
     const db = getDatabase();
-    return db.getAllSync<TransactionWithDetails>(
+    const standard = db.getAllSync<TransactionWithDetails>(
       `SELECT 
         t.*,
         c.name as category_name,
@@ -364,6 +407,62 @@ export const TransactionRepository = {
       LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
       ORDER BY t.date DESC, t.time DESC, t.created_at DESC;`
     );
+
+    if (!includeTemporary) {
+      return standard;
+    }
+
+    try {
+      const tempRows = db.getAllSync<any>(
+        `SELECT 
+          tt.*,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM temporary_transactions tt
+        LEFT JOIN categories c ON tt.category_id = c.id
+        ORDER BY tt.date DESC, tt.time DESC, tt.created_at DESC;`
+      );
+
+      const mappedTemp: TransactionWithDetails[] = tempRows.map((t) => ({
+        id: t.id,
+        type: 'expense' as const,
+        amount: t.amount,
+        account_id: t.payment_source_type === 'account' ? t.payment_source_id : null,
+        dest_account_id: null,
+        credit_card_id: t.payment_source_type === 'credit_card' ? t.payment_source_id : null,
+        category_id: t.category_id,
+        subcategory_id: null,
+        date: t.date,
+        time: t.time,
+        note: t.notes || t.title,
+        expression: null,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        category_name: t.category_name || 'Paid on Behalf',
+        category_color: '#C8F322',
+        category_icon: 'Handshake',
+        subcategory_name: t.person_name ? `For ${t.person_name}` : 'Advance',
+        account_name: t.payment_source_name || (t.payment_source_type === 'account' ? 'Bank Account' : null),
+        dest_account_name: null,
+        credit_card_name: t.payment_source_type === 'credit_card' ? t.payment_source_name : null,
+        is_temporary: true,
+        is_returned: t.is_returned,
+        person_name: t.person_name,
+        returned_date: t.returned_date,
+      }));
+
+      const merged = [...standard, ...mappedTemp];
+      merged.sort((a, b) => {
+        const dateCmp = b.date.localeCompare(a.date);
+        if (dateCmp !== 0) return dateCmp;
+        return (b.time || '').localeCompare(a.time || '');
+      });
+
+      return merged;
+    } catch {
+      return standard;
+    }
   },
 
   update(updatedTx: Transaction): void {
