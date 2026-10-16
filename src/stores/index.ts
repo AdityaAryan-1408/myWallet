@@ -6,4 +6,5 @@ export {
 } from './dashboardStore';
 export { useThemeStore } from './themeStore';
 export { useTemporaryTransactionStore } from './temporaryTransactionStore';
+export { useAiChatStore } from './aiChatStore';
 

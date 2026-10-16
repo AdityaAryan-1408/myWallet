@@ -130,6 +130,14 @@ export const SettingsRepository = {
     this.set('preferred_reminder_time', time || '09:00');
   },
 
+  getAiCopilotEnabled(): boolean {
+    return this.get('ai_copilot_enabled', '1') === '1';
+  },
+
+  setAiCopilotEnabled(enabled: boolean): void {
+    this.set('ai_copilot_enabled', enabled ? '1' : '0');
+  },
+
   get(key: string, defaultValue: string = ''): string {
     try {
       const db = getDatabase();

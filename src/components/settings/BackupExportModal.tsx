@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Clipboard from 'expo-clipboard';
 import {
   X,
   Share2,
@@ -32,6 +33,7 @@ import {
   FileJson,
   FolderOpen,
   Download,
+  ClipboardList,
 } from 'lucide-react-native';
 import { BackupRepository, CloudSyncStatus } from '@/repositories';
 import { useFinancialStore } from '@/stores';
@@ -106,6 +108,53 @@ export function BackupExportModal({ visible, onClose }: BackupExportModalProps) 
     }
   };
 
+  // Multi-strategy reader for any URI scheme (content://, file://, blob:, web, Android, iOS)
+  const readPickedFile = async (file: DocumentPicker.DocumentPickerAsset): Promise<string> => {
+    // Strategy 1: HTML5 file blob (if running on web)
+    if ((file as any).file && typeof (file as any).file.text === 'function') {
+      try {
+        const text = await (file as any).file.text();
+        if (text && text.trim().length > 0) return text;
+      } catch (e) {
+        console.warn('HTML5 file.text() read failed:', e);
+      }
+    }
+
+    // Strategy 2: React Native fetch() stream - Native ContentResolver on Android
+    // In React Native on Android, fetch("content://...") uses Android's ContentResolver.openInputStream(uri)
+    try {
+      const response = await fetch(file.uri);
+      if (response.ok || response.status === 200 || response.status === 0) {
+        const text = await response.text();
+        if (text && text.trim().length > 0) return text;
+      }
+    } catch (e) {
+      console.warn('fetch(file.uri) read attempt failed:', e);
+    }
+
+    // Strategy 3: FileSystem.readAsStringAsync (Legacy)
+    try {
+      const text = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      if (text && text.trim().length > 0) return text;
+    } catch (e) {
+      console.warn('FileSystem.readAsStringAsync failed:', e);
+    }
+
+    // Strategy 4: Expo Next File API
+    try {
+      const { File: ExpoFile } = await import('expo-file-system');
+      const f = new ExpoFile(file.uri);
+      const text = await f.text();
+      if (text && text.trim().length > 0) return text;
+    } catch (e) {
+      console.warn('ExpoFile.text() failed:', e);
+    }
+
+    throw new Error('Could not read the selected file. Please make sure the file is accessible in your file manager.');
+  };
+
   // Import JSON from .json file
   const handlePickFileToRestore = async () => {
     try {
@@ -124,30 +173,31 @@ export function BackupExportModal({ visible, onClose }: BackupExportModalProps) 
       }
 
       const file = result.assets[0];
-      const fileContent = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const rawContent = await readPickedFile(file);
+      const fileContent = rawContent.replace(/^\uFEFF/, '').trim();
 
       // Validate parsed JSON
       let parsed: any;
       try {
         parsed = JSON.parse(fileContent);
-      } catch {
-        setRestoreError('The selected file is not a valid JSON document.');
+      } catch (parseErr: any) {
+        setRestoreError('The selected file is not a valid JSON document: ' + (parseErr?.message || 'Syntax error'));
         setIsImporting(false);
         return;
       }
 
-      if (!parsed || parsed.app !== 'MyWallet' || !parsed.tables) {
-        setRestoreError('Invalid backup file: Must be a genuine MyWallet backup with tables.');
+      const tables = parsed.tables || (parsed.accounts || parsed.transactions ? parsed : null);
+
+      if (!tables) {
+        setRestoreError('Invalid backup file: Must contain database tables (accounts, transactions, etc.).');
         setIsImporting(false);
         return;
       }
 
-      const txCount = parsed.tables?.transactions?.length ?? 0;
-      const accCount = parsed.tables?.accounts?.length ?? 0;
-      const cardCount = parsed.tables?.creditCards?.length ?? 0;
-      const debtCount = parsed.tables?.peopleDebts?.length ?? 0;
+      const txCount = tables.transactions?.length ?? 0;
+      const accCount = tables.accounts?.length ?? 0;
+      const cardCount = tables.creditCards?.length ?? 0;
+      const debtCount = tables.peopleDebts?.length ?? 0;
 
       Alert.alert(
         'Confirm Restore',
@@ -180,23 +230,124 @@ export function BackupExportModal({ visible, onClose }: BackupExportModalProps) 
     }
   };
 
+  // 1-Tap Paste & Restore directly from system ClipboardManager
+  const handlePasteFromClipboard = async () => {
+    try {
+      Haptics.selectionAsync();
+      setRestoreError(null);
+      const clipboardText = await Clipboard.getStringAsync();
+      const cleanText = clipboardText ? clipboardText.replace(/^\uFEFF/, '').trim() : '';
+
+      if (!cleanText) {
+        setRestoreError('Clipboard is empty. Copy your backup JSON code, then tap this button.');
+        return;
+      }
+
+      // Check if truncated
+      let parsed: any;
+      try {
+        parsed = JSON.parse(cleanText);
+      } catch (e: any) {
+        if (!cleanText.endsWith('}')) {
+          setRestoreError('Clipboard text appears incomplete or truncated (missing closing brackets). Please re-copy the entire file.');
+        } else {
+          setRestoreError('Clipboard content is not valid JSON: ' + (e?.message || 'Syntax error'));
+        }
+        return;
+      }
+
+      const tables = parsed.tables || (parsed.accounts || parsed.transactions ? parsed : null);
+      if (!tables) {
+        setRestoreError('Invalid backup format: Missing database tables in clipboard JSON.');
+        return;
+      }
+
+      const txCount = tables.transactions?.length ?? 0;
+      const accCount = tables.accounts?.length ?? 0;
+      const cardCount = tables.creditCards?.length ?? 0;
+      const debtCount = tables.peopleDebts?.length ?? 0;
+
+      // Populate preview in input
+      setRestoreJson(cleanText.length > 500 ? `${cleanText.slice(0, 300)}\n\n... [${cleanText.length} characters in total] ...\n\n${cleanText.slice(-150)}` : cleanText);
+
+      Alert.alert(
+        'Confirm Restore from Clipboard',
+        `Valid backup found in clipboard:\n• ${txCount} Transactions\n• ${accCount} Accounts\n• ${cardCount} Credit Cards\n• ${debtCount} Debts\n• Size: ${(cleanText.length / 1024).toFixed(1)} KB\n\nRestoring will replace current ledger records with this data. Proceed?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore Now',
+            style: 'destructive',
+            onPress: () => {
+              const res = BackupRepository.importAllData(cleanText);
+              if (res.success) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                refreshFinancials();
+                Alert.alert('Restore Complete', res.message);
+                setRestoreJson('');
+                setRestoreError(null);
+                onClose();
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                setRestoreError(res.message);
+              }
+            },
+          },
+        ]
+      );
+    } catch (err: any) {
+      console.warn('Clipboard read error:', err);
+      setRestoreError(err?.message || 'Could not access clipboard.');
+    }
+  };
+
   // Restore Database from pasted text
   const handleRestoreFromText = () => {
-    if (!restoreJson.trim()) {
-      setRestoreError('Please paste your backup JSON code or pick a file above.');
+    const raw = restoreJson.trim();
+    if (!raw) {
+      setRestoreError('Please paste your backup JSON code or tap Paste from Clipboard above.');
       return;
     }
 
+    if (!raw.endsWith('}') && !raw.endsWith(']')) {
+      Alert.alert(
+        'Incomplete / Truncated JSON',
+        'Your keyboard truncated the pasted text (it is missing the closing "}" at the end).\n\nTip: Use the "1-Tap Paste from Clipboard" button above instead, which reads the entire file directly without keyboard truncation limits!'
+      );
+      setRestoreError('Pasted text is cut off by keyboard limits. Tap "1-Tap Paste from Clipboard" instead.');
+      return;
+    }
+
+    const cleanText = raw.replace(/^\uFEFF/, '').trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleanText);
+    } catch (e: any) {
+      setRestoreError('Invalid JSON code: ' + (e?.message || 'Syntax error'));
+      return;
+    }
+
+    const tables = parsed.tables || (parsed.accounts || parsed.transactions ? parsed : null);
+    if (!tables) {
+      setRestoreError('Invalid backup file: Must contain tables (accounts, transactions, etc.).');
+      return;
+    }
+
+    const txCount = tables.transactions?.length ?? 0;
+    const accCount = tables.accounts?.length ?? 0;
+    const cardCount = tables.creditCards?.length ?? 0;
+    const debtCount = tables.peopleDebts?.length ?? 0;
+
     Alert.alert(
       'Overwrite Database?',
-      'Restoring from this backup will replace current records with the backup data.',
+      `Contents:\n• ${txCount} Transactions\n• ${accCount} Accounts\n• ${cardCount} Credit Cards\n• ${debtCount} Debts\n\nRestoring will replace current ledger records with this data. Proceed?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Restore Now',
           style: 'destructive',
           onPress: () => {
-            const res = BackupRepository.importAllData(restoreJson.trim());
+            const res = BackupRepository.importAllData(cleanText);
             if (res.success) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               refreshFinancials();
@@ -403,10 +554,20 @@ export function BackupExportModal({ visible, onClose }: BackupExportModalProps) 
                   </TouchableOpacity>
                 </View>
 
+                {/* 1-Tap Paste from Clipboard Button (Bypasses keyboard paste buffer limits) */}
+                <TouchableOpacity
+                  style={styles.pasteClipboardBtn}
+                  onPress={handlePasteFromClipboard}
+                  activeOpacity={0.8}
+                >
+                  <ClipboardList size={18} color="#C8F322" strokeWidth={2.4} />
+                  <Text style={styles.pasteClipboardBtnText}>1-Tap Paste & Restore from Clipboard</Text>
+                </TouchableOpacity>
+
                 {/* Divider */}
                 <View style={styles.dividerRow}>
                   <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR PASTE JSON CODE</Text>
+                  <Text style={styles.dividerText}>OR TYPE / PASTE MANUALLY</Text>
                   <View style={styles.dividerLine} />
                 </View>
 
@@ -414,6 +575,7 @@ export function BackupExportModal({ visible, onClose }: BackupExportModalProps) 
                   style={styles.jsonInput}
                   multiline
                   numberOfLines={6}
+                  maxLength={5000000}
                   value={restoreJson}
                   onChangeText={(txt) => {
                     setRestoreJson(txt);
@@ -695,6 +857,23 @@ const styles = StyleSheet.create({
     ...Typography.bodyMdMedium,
     fontWeight: '700',
     color: Colors.surface,
+  },
+  pasteClipboardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1C2210',
+    borderRadius: Shapes.lg,
+    height: 48,
+    marginTop: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: 'rgba(200, 243, 34, 0.45)',
+  },
+  pasteClipboardBtnText: {
+    fontFamily: 'PlusJakartaSans-Bold',
+    fontSize: 14,
+    color: '#C8F322',
   },
   dividerRow: {
     flexDirection: 'row',

@@ -40,7 +40,14 @@ import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/th
 export default function AddTransactionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ prefillDate?: string; type?: string }>();
+  const params = useLocalSearchParams<{
+    prefillDate?: string;
+    type?: string;
+    amount?: string;
+    note?: string;
+    category?: string;
+    account?: string;
+  }>();
   const { accounts, creditCards, categories, refreshFinancials } = useFinancialStore();
 
   // Current Today String
@@ -49,15 +56,19 @@ export default function AddTransactionScreen() {
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Transaction Form State (Supports deep-link from Android Home Screen Widget)
+  // Transaction Form State (Supports deep-link from Android Home Screen Widget or AI Co-Pilot)
   const [type, setType] = useState<TransactionType>(() => {
     if (params.type === 'income' || params.type === 'transfer') {
       return params.type;
     }
     return 'expense';
   });
-  const [expression, setExpression] = useState<string>('0');
+  const [expression, setExpression] = useState<string>(() => params.amount || '0');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
+    if (params.category && categories?.length) {
+      const match = categories.find((c) => c.name.toLowerCase().includes(params.category!.toLowerCase()));
+      if (match) return match.id;
+    }
     const firstExpense = categories?.find((c) => c.type === 'expense' && c.is_active === 1);
     return firstExpense?.id || 'cat_food';
   });
@@ -78,7 +89,7 @@ export default function AddTransactionScreen() {
     const secondary = accounts.find((a) => a.id !== (primary?.id || accounts[0]?.id));
     return secondary?.id || accounts[1]?.id || '';
   });
-  const [note, setNote] = useState<string>('');
+  const [note, setNote] = useState<string>(() => params.note || '');
   const [isTemporary, setIsTemporary] = useState<boolean>(false);
   const [personName, setPersonName] = useState<string>('');
 

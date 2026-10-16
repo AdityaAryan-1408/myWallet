@@ -122,15 +122,25 @@ export const BackupRepository = {
    * Imports a valid JSON backup string and writes it atomically to SQLite.
    */
   importAllData(jsonStr: string): { success: boolean; message: string; count?: number } {
+    const db = getDatabase();
+    let inTransaction = false;
     try {
-      const parsed = JSON.parse(jsonStr) as BackupPayload;
+      const cleaned = jsonStr.replace(/^\uFEFF/, '').trim();
+      const parsed = JSON.parse(cleaned) as any;
 
-      if (!parsed || !parsed.tables) {
-        return { success: false, message: 'Invalid backup file format: Missing tables.' };
+      if (!parsed) {
+        return { success: false, message: 'Invalid backup: Empty document.' };
       }
 
-      const db = getDatabase();
-      const { tables } = parsed;
+      const tables = parsed.tables || (parsed.accounts || parsed.transactions ? parsed : null);
+
+      if (!tables) {
+        return { success: false, message: 'Invalid backup file format: Missing database tables.' };
+      }
+
+      // Begin atomic transaction
+      db.execSync('BEGIN TRANSACTION;');
+      inTransaction = true;
 
       // Clear existing records respecting dependencies
       db.execSync('PRAGMA foreign_keys = OFF;');
@@ -300,12 +310,23 @@ export const BackupRepository = {
         }
       }
 
+      // Commit atomic transaction
+      if (inTransaction) {
+        db.execSync('COMMIT;');
+        inTransaction = false;
+      }
+
       return {
         success: true,
         message: 'Database successfully restored from backup.',
         count: tables.transactions?.length || 0,
       };
     } catch (e: any) {
+      if (inTransaction) {
+        try {
+          db.execSync('ROLLBACK;');
+        } catch {}
+      }
       return {
         success: false,
         message: e?.message || 'Failed to parse and restore backup data.',

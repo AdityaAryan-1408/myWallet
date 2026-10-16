@@ -21,6 +21,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { BottomTabBar } from '@/components/navigation/BottomTabBar';
 import { FAB } from '@/components/navigation/FAB';
+import { AiCoPilotContainer } from '@/components/ai';
 import { Colors } from '@/theme';
 import { useFinancialStore } from '@/stores';
 import {
@@ -156,6 +157,9 @@ export default function MainTabsPagerScreen() {
 
       {/* Floating Action Button for Transaction Entry */}
       <FAB onPress={() => router.push('/add-transaction')} />
+
+      {/* Floating AI Co-Pilot Launcher & Morphing Overlay */}
+      <AiCoPilotContainer />
     </View>
   );
 }

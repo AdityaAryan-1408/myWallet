@@ -61,6 +61,7 @@ import {
   BackupExportModal,
   ResetConfirmModal,
   NotificationDiagnosticsCard,
+  AiCoPilotSettingsCard,
 } from '@/components/settings';
 import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation, ThemeMode } from '@/theme';
 
@@ -806,6 +807,9 @@ export function SettingsScreen() {
               )}
             </View>
 
+            {/* AI Co-Pilot (Zenith Agent) API Settings */}
+            <AiCoPilotSettingsCard />
+
             {/* Android Home Screen Widget (Phase 18) */}
             <WidgetPreviewCard />
           </Animated.View>
@@ -863,6 +867,9 @@ export function SettingsScreen() {
                 </View>
               </View>
             </View>
+
+            {/* AI Co-Pilot Intelligence Configuration */}
+            <AiCoPilotSettingsCard />
 
             {/* Privacy & Sovereignty Commitment */}
             <View style={styles.sectionCard}>
@@ -986,7 +993,7 @@ export function SettingsScreen() {
 
         {/* Footer Brand & Version */}
         <View style={styles.footerBranding}>
-          <Text style={styles.footerVersionText}>MyWallet v2.0.0 (Build 10)</Text>
+          <Text style={styles.footerVersionText}>MyWallet v3.0.0 (Build 18)</Text>
           <Text style={styles.footerSubText}>Zenith Adaptive Architecture • Offline SQLite</Text>
         </View>
 
