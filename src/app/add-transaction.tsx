@@ -30,6 +30,8 @@ import { X, Calendar, Check, ArrowRightLeft, Sparkles, Handshake } from 'lucide-
 import { QuickCalcKeypad } from '@/components/transaction/QuickCalcKeypad';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { PaymentSourceSelector } from '@/components/transaction/PaymentSourceSelector';
+import { MoneyFlowConfirmationModal } from '@/components/transaction/MoneyFlowConfirmationModal';
+import { CategoryEntryAtmosphere } from '@/components/transaction/CategoryEntryAtmosphere';
 import { evaluateExpression } from '@/utils/mathEvaluator';
 import { TransactionRepository, MerchantRepository, TemporaryTransactionRepository } from '@/repositories';
 import { AiIntelligenceService } from '@/services';
@@ -92,6 +94,37 @@ export default function AddTransactionScreen() {
   const [note, setNote] = useState<string>(() => params.note || '');
   const [isTemporary, setIsTemporary] = useState<boolean>(false);
   const [personName, setPersonName] = useState<string>('');
+
+  // A1: Animated "Money Flow" Transaction Confirmation State
+  const [showMoneyFlow, setShowMoneyFlow] = useState<boolean>(false);
+  const [confirmedTxData, setConfirmedTxData] = useState<{
+    type: TransactionType;
+    amount: number;
+    sourceName: string;
+    sourceType: 'account' | 'credit_card';
+    destName?: string;
+    categoryName?: string;
+    categoryIcon?: string;
+    categoryColor?: string;
+    note?: string;
+  } | null>(null);
+
+  const handleFlowComplete = () => {
+    setShowMoneyFlow(false);
+    router.back();
+  };
+
+  // A5: Category-Specific Transaction Entry Atmosphere Color
+  const activeMoodColor = useMemo(() => {
+    if (type === 'transfer') return Colors.transfer;
+    if (type === 'income') {
+      const cat = categories.find((c) => c.id === selectedCategoryId);
+      return cat?.color || Colors.income;
+    }
+    // Expense
+    const cat = categories.find((c) => c.id === selectedCategoryId);
+    return cat?.color || '#FF6B6B';
+  }, [type, selectedCategoryId, categories]);
 
   // Auto-sync default source to primary bank account if initialized before accounts loaded
   React.useEffect(() => {
@@ -239,8 +272,19 @@ export default function AddTransactionScreen() {
       useTemporaryTransactionStore.getState().refresh();
       refreshFinancials();
 
-      // Close screen
-      router.back();
+      // Trigger cinematic Money Flow confirmation
+      setConfirmedTxData({
+        type: 'expense',
+        amount: evaluatedAmount,
+        sourceName: paymentSourceName || 'Bank Account',
+        sourceType,
+        destName: personName.trim() ? `Paid for ${personName.trim()}` : 'Paid on Behalf',
+        categoryName: personName.trim() ? `For ${personName.trim()}` : 'Advance',
+        categoryIcon: 'Handshake',
+        categoryColor: Colors.chartreuse,
+        note: note.trim() || undefined,
+      });
+      setShowMoneyFlow(true);
       return;
     }
 
@@ -281,14 +325,48 @@ export default function AddTransactionScreen() {
     // Reactive store update
     refreshFinancials();
 
-    // Close screen
-    router.back();
+    // Trigger cinematic Money Flow confirmation
+    let srcName = 'Bank Account';
+    if (sourceType === 'account') {
+      const acc = accounts.find((a) => a.id === sourceId);
+      srcName = acc?.name || 'Bank Account';
+    } else {
+      const card = creditCards.find((c) => c.id === sourceId);
+      srcName = card?.name || 'Credit Card';
+    }
+
+    let dstName: string | undefined = undefined;
+    if (type === 'transfer') {
+      const destAcc = accounts.find((a) => a.id === destAccountId);
+      dstName = destAcc?.name || 'Destination Account';
+    }
+
+    const cat = categories.find((c) => c.id === selectedCategoryId);
+    const catName = cat?.name || (type === 'income' ? 'Income' : 'Expense');
+    const catIcon = cat?.icon || (type === 'income' ? 'TrendingUp' : 'Utensils');
+    const catColor = cat?.color || (type === 'income' ? Colors.income : Colors.expense);
+
+    setConfirmedTxData({
+      type,
+      amount: evaluatedAmount,
+      sourceName: srcName,
+      sourceType,
+      destName: dstName,
+      categoryName: catName,
+      categoryIcon: catIcon,
+      categoryColor: catColor,
+      note: note.trim() || undefined,
+    });
+    setShowMoneyFlow(true);
   };
 
   const categoryType: CategoryType = type === 'income' ? 'income' : 'expense';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
+      {/* A5: Category-Specific Transaction Entry Atmosphere */}
+      <CategoryEntryAtmosphere color={activeMoodColor} />
+
       {/* ─── Top Header ─── */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -365,7 +443,7 @@ export default function AddTransactionScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         {/* ─── Evaluated Expression Display ─── */}
-        <View style={styles.amountCard}>
+        <View style={[styles.amountCard, { borderColor: `${activeMoodColor}45` }]}>
           {/* Running expression line */}
           <Text style={styles.expressionText}>
             {expression.includes('+') ||
@@ -381,9 +459,7 @@ export default function AddTransactionScreen() {
             <Text
               style={[
                 styles.currencySymbol,
-                type === 'income' && { color: Colors.income },
-                type === 'expense' && { color: Colors.expense },
-                type === 'transfer' && { color: Colors.transfer },
+                { color: activeMoodColor },
               ]}
             >
               ₹
@@ -391,9 +467,7 @@ export default function AddTransactionScreen() {
             <Text
               style={[
                 styles.amountValue,
-                type === 'income' && { color: Colors.income },
-                type === 'expense' && { color: Colors.expense },
-                type === 'transfer' && { color: Colors.transfer },
+                { color: activeMoodColor },
               ]}
             >
               {evaluatedAmount.toLocaleString('en-IN')}
@@ -659,6 +733,21 @@ export default function AddTransactionScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* ─── A1: Animated "Money Flow" Transaction Confirmation ─── */}
+      <MoneyFlowConfirmationModal
+        visible={showMoneyFlow}
+        type={confirmedTxData?.type || 'expense'}
+        amount={confirmedTxData?.amount || 0}
+        sourceName={confirmedTxData?.sourceName || 'Account'}
+        sourceType={confirmedTxData?.sourceType || 'account'}
+        destName={confirmedTxData?.destName}
+        categoryName={confirmedTxData?.categoryName}
+        categoryIcon={confirmedTxData?.categoryIcon}
+        categoryColor={confirmedTxData?.categoryColor}
+        note={confirmedTxData?.note}
+        onComplete={handleFlowComplete}
+      />
     </View>
   );
 }

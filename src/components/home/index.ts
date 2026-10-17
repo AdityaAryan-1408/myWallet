@@ -20,4 +20,5 @@ export {
   type DashboardCardDefinition,
 } from './DashboardCardRegistry';
 export { AtmosphericHorizonGreeting } from './AtmosphericHorizonGreeting';
+export { DynamicHeroHealthGradient } from './DynamicHeroHealthGradient';
 export * from './AnalyticsCardAdapters';

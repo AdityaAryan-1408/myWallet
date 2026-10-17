@@ -44,7 +44,9 @@ import {
   DashboardCardRenderer,
   DashboardCardPicker,
   AtmosphericHorizonGreeting,
+  DynamicHeroHealthGradient,
 } from '@/components/home';
+import { calculateFinancialHealth } from '@/domain/financialCalculations';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 import { useFinancialStore, useDashboardStore } from '@/stores';
 import { BudgetRepository } from '@/repositories';
@@ -65,8 +67,18 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     dailySpendLimit,
     daysRemainingInMonth,
     monthlyTotals,
+    overallBudget,
     refreshFinancials,
   } = useFinancialStore();
+
+  // Dynamic Financial Health (A3: Emerald-Teal / Amber-Gold / Crimson Breathing)
+  const healthInfo = useMemo(() => {
+    return calculateFinancialHealth({
+      availableToSpend,
+      overallBudget,
+      totalBankCashBalance: totalAvailableBankCashBalance ?? totalBankCashBalance,
+    });
+  }, [availableToSpend, overallBudget, totalAvailableBankCashBalance, totalBankCashBalance]);
 
   const cards = useDashboardStore((s) => s.cards);
   const isEditMode = useDashboardStore((s) => s.isEditMode);
@@ -143,38 +155,56 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
         {/* ─── Atmospheric Time-of-Day Horizon (Upgrade 4.3) ─── */}
         <AtmosphericHorizonGreeting userName={userName} />
 
-        {/* ─── Hero Card: Safe-to-Spend (Permanent) ─── */}
+        {/* ─── Hero Card: Safe-to-Spend with Dynamic Health Gradients (A3) ─── */}
         <Animated.View
           entering={FadeInDown.duration(600).delay(100)}
           style={[
             styles.heroCard,
-            availableToSpend < 0 && styles.heroCardDeficit,
+            { borderColor: healthInfo.borderColor },
           ]}
         >
+          {/* Dynamic Health SVG Gradient (Emerald-Teal / Amber-Gold / Crimson Breathing) */}
+          <DynamicHeroHealthGradient healthTier={healthInfo.tier} />
+
           {/* Ambient Glow */}
-          <View style={styles.heroGlow} />
+          <View style={[styles.heroGlow, { backgroundColor: healthInfo.glowColor }]} />
 
           {/* Living Ambient Particle Field */}
-          <AmbientParticleField
-            color={availableToSpend < 0 ? Colors.expense : Colors.chartreuse}
-          />
+          <AmbientParticleField color={healthInfo.accentColor} />
 
           {/* Living Perimeter Breathing Halo */}
-          <HeroBreathingHalo isDeficit={availableToSpend < 0} />
+          <HeroBreathingHalo
+            isDeficit={healthInfo.tier === 'critical'}
+            haloColor={healthInfo.accentColor}
+          />
 
           <View style={styles.heroContent}>
-            {/* Eyebrow with live pulse dot */}
+            {/* Eyebrow with live pulse dot + dynamic health badge */}
             <View style={styles.heroEyebrowRow}>
               <View style={styles.heroEyebrow}>
                 <View
                   style={[
                     styles.pulseDot,
-                    availableToSpend < 0 && { backgroundColor: Colors.expense },
+                    { backgroundColor: healthInfo.accentColor },
                   ]}
                 />
-                <Text style={styles.eyebrowLabel}>
+                <Text style={[styles.eyebrowLabel, { color: healthInfo.accentColor }]}>
                   {availableToSpend < 0 ? 'DEFICIT ALERT' : 'AVAILABLE TO SPEND'}
                 </Text>
+
+                <View
+                  style={[
+                    styles.healthBadge,
+                    {
+                      backgroundColor: healthInfo.badgeBg,
+                      borderColor: healthInfo.badgeBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.healthBadgeText, { color: healthInfo.badgeColor }]}>
+                    {healthInfo.badgeLabel}
+                  </Text>
+                </View>
               </View>
 
               {/* Navigate to full breakdown screen */}
@@ -188,12 +218,12 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
               >
                 <Info size={14} color={Colors.onSurfaceVariant} />
                 <Text style={styles.breakdownToggleText}>
-                  How is this calculated? →
+                  Breakdown →
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Oversized Rolling Number */}
+            {/* Oversized Rolling Number in dynamic health accent */}
             <View style={styles.heroAmountRow}>
               <AnimatedNumber
                 value={availableToSpend}
@@ -202,7 +232,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 prefix="₹"
                 suffix=".00"
                 textStyle={{
-                  color: availableToSpend < 0 ? Colors.expense : Colors.chartreuse,
+                  color: healthInfo.accentColor,
                 }}
               />
             </View>
@@ -210,7 +240,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
             {/* Pacing Subtext */}
             <Text style={styles.heroSubtext}>
               Safe pace through {endOfMonthLabel} •{' '}
-              <Text style={styles.heroHighlight}>
+              <Text style={[styles.heroHighlight, { color: healthInfo.accentColor }]}>
                 ₹{dailySpendLimit.toLocaleString('en-IN')}/day limit
               </Text>{' '}
               ({daysRemainingInMonth} days left)
@@ -374,18 +404,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     ...Elevation.high,
   },
-  heroCardDeficit: {
-    borderColor: 'rgba(255, 82, 82, 0.35)',
-  },
   heroGlow: {
     position: 'absolute',
     top: -50,
     right: -50,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
     backgroundColor: Colors.chartreuseGlow,
-    opacity: 0.15,
+    opacity: 0.18,
   },
   heroContent: {
     gap: 6,
@@ -411,6 +438,18 @@ const styles = StyleSheet.create({
     ...Typography.labelCaps,
     color: Colors.chartreuse,
     letterSpacing: 1.2,
+  },
+  healthBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+    marginLeft: 4,
+  },
+  healthBadgeText: {
+    fontFamily: FontFamily.headingBold,
+    fontSize: 9,
+    letterSpacing: 0.6,
   },
   breakdownToggle: {
     flexDirection: 'row',

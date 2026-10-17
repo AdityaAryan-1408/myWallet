@@ -1,26 +1,14 @@
 /**
  * MyWallet — AI Co-Pilot Service Layer
  *
- * Implements native Google Gemini 2.5 Flash Tool Use (Function Calling)
- * with multi-turn tool loops, fallback support, and offline resilience.
+ * Implements native Google Gemini Flash Tool Use (Function Calling)
+ * with robust model auto-discovery, quota-safe connection testing,
+ * Groq API dual-engine support, and local offline resilience.
  */
 
 import { SettingsRepository } from '@/repositories/settingsRepository';
 import { GEMINI_TOOL_DECLARATIONS, executeAiTool } from './aiTools';
 import { useFinancialStore } from '@/stores/financialStore';
-
-const SYSTEM_INSTRUCTION = `You are MyWallet Co-Pilot, an elite, highly precise personal financial advisor built into the MyWallet app.
-CRITICAL RULES:
-1. NEVER guess, make up, or hallucinate financial numbers, account balances, or budgets.
-2. ALWAYS call the provided tools (such as get_available_to_spend, get_budget_status, get_daily_safe_pace, simulate_purchase) to fetch real local numbers before answering.
-3. Always format currency in Indian Rupees with ₹ (e.g., ₹500, ₹4,200).
-4. If the user asks a quick simple factual question (e.g., "What is my balance?"), keep the response crisp and direct.
-5. If the user asks a strategic or situational decision question (e.g., "Should I buy ₹500 food considering I have 3 tight days..."), provide structured reasoning:
-   - Give the exact 3-day or remaining daily pace impact.
-   - Contrast budget remaining vs total cash.
-   - Give a clear, actionable verdict.
-6. If the user commands to log/record a transaction (e.g. "Log ₹20 on SBI tagged Chai"), call the prefill_transaction tool with the parsed fields.
-7. Do not include markdown code block backticks around your financial explanations. Keep it clean and readable.`;
 
 export interface FinancialCardData {
   title: string;
@@ -62,17 +50,27 @@ export interface AiResponseResult {
   };
 }
 
+/**
+ * Curated list of high-performance Flash models.
+ * Strictly excludes deprecated/legacy models (like gemini-1.5-flash)
+ * and non-existent model tags.
+ */
 export const DEFAULT_CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
   'gemini-3.5-flash',
-  'gemini-3.0-flash',
   'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
-  'gemini-1.5-flash',
+];
+
+export const GROQ_CANDIDATE_MODELS = [
+  'qwen/qwen3.6-27b',
+  'openai/gpt-oss-120b',
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
 ];
 
 /**
- * Safe fetch wrapper with timeout (35s for mobile networks)
+ * Safe fetch wrapper with timeout
  */
 async function fetchWithTimeout(url: string, options: any, timeoutMs = 35000): Promise<Response> {
   const controller = new AbortController();
@@ -88,11 +86,46 @@ async function fetchWithTimeout(url: string, options: any, timeoutMs = 35000): P
 }
 
 /**
+ * Helper to transform Gemini tool declarations to OpenAI/Groq JSON schema format
+ */
+function getGroqTools() {
+  return GEMINI_TOOL_DECLARATIONS.map((tool) => {
+    const params = tool.parameters
+      ? {
+          type: 'object',
+          properties: Object.entries(tool.parameters.properties || {}).reduce(
+            (acc: any, [key, val]: [string, any]) => {
+              acc[key] = {
+                type: (val.type || 'string').toLowerCase(),
+                description: val.description,
+              };
+              return acc;
+            },
+            {}
+          ),
+          required: (tool.parameters as any).required || [],
+        }
+      : { type: 'object', properties: {} };
+
+    return {
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: params,
+      },
+    };
+  });
+}
+
+/**
  * Queries Google's /models endpoint to discover the best active Flash model
- * supported by this specific API key.
+ * supported by this specific API key without burning generation quota.
  */
 export async function detectBestGeminiModel(apiKey: string): Promise<string> {
   const cleanKey = apiKey.trim();
+  const currentSaved = SettingsRepository.get('ai_active_model_name', '');
+
   try {
     const listRes = await fetchWithTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`,
@@ -104,6 +137,21 @@ export async function detectBestGeminiModel(apiKey: string): Promise<string> {
       const modelsList: Array<{ name: string; supportedGenerationMethods?: string[] }> =
         data?.models || [];
 
+      // If user currently has a valid saved model (non-1.5) that exists, retain it
+      if (
+        currentSaved &&
+        !currentSaved.includes('1.5') &&
+        modelsList.some(
+          (m) =>
+            m.name.replace(/^models\//, '') === currentSaved &&
+            (!m.supportedGenerationMethods ||
+              m.supportedGenerationMethods.includes('generateContent'))
+        )
+      ) {
+        return currentSaved;
+      }
+
+      // Check candidate models in order of priority (excluding 1.5)
       for (const pref of DEFAULT_CANDIDATE_MODELS) {
         const found = modelsList.find(
           (m) =>
@@ -118,10 +166,11 @@ export async function detectBestGeminiModel(apiKey: string): Promise<string> {
         }
       }
 
-      // Any flash model supporting generateContent
+      // Any flash model supporting generateContent (STRICTLY EXCLUDING gemini-1.5)
       const anyFlash = modelsList.find(
         (m) =>
           m.name.toLowerCase().includes('flash') &&
+          !m.name.includes('1.5') &&
           (!m.supportedGenerationMethods ||
             m.supportedGenerationMethods.includes('generateContent'))
       );
@@ -135,10 +184,82 @@ export async function detectBestGeminiModel(apiKey: string): Promise<string> {
     // network or parse issue — gracefully proceed to defaults
   }
 
-  return SettingsRepository.get('ai_active_model_name', 'gemini-3.8-flash');
+  // If saved model was 1.5-flash or invalid, reset to gemini-3.5-flash
+  if (
+    !currentSaved ||
+    currentSaved.includes('1.5') ||
+    !DEFAULT_CANDIDATE_MODELS.includes(currentSaved)
+  ) {
+    SettingsRepository.set('ai_active_model_name', 'gemini-3.5-flash');
+    return 'gemini-3.5-flash';
+  }
+
+  return currentSaved;
 }
 
-// ─── Test Gemini API Key ────────────────────────────────────────────────────────
+// ─── Test Groq API Key ──────────────────────────────────────────────────────────
+
+export async function testGroqApiKey(
+  apiKey: string
+): Promise<{ success: boolean; latencyMs?: number; modelUsed?: string; error?: string }> {
+  if (!apiKey || apiKey.trim().length < 10) {
+    return { success: false, error: 'Groq API key is too short or invalid.' };
+  }
+
+  const cleanKey = apiKey.trim();
+  const start = Date.now();
+
+  let lastError = '';
+  for (const model of GROQ_CANDIDATE_MODELS) {
+    try {
+      const response = await fetchWithTimeout(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${cleanKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: 'Respond with exactly: OK' }],
+            max_tokens: 10,
+          }),
+        },
+        8000
+      );
+
+      const latencyMs = Date.now() - start;
+
+      if (response.ok) {
+        SettingsRepository.set('ai_groq_active_model', model);
+        return { success: true, latencyMs, modelUsed: `Groq (${model})` };
+      }
+
+      const errJson = await response.json().catch(() => ({}));
+      const msg = errJson?.error?.message || `HTTP ${response.status}`;
+
+      if (response.status === 401 || msg.toLowerCase().includes('invalid api key')) {
+        return { success: false, error: 'Invalid Groq API key.' };
+      }
+
+      if (response.status === 429) {
+        return {
+          success: false,
+          error: `Groq rate limit reached for ${model}. Please wait a moment before testing.`,
+        };
+      }
+
+      lastError = msg;
+    } catch (e: any) {
+      lastError = e?.message || 'Network timeout';
+    }
+  }
+
+  return { success: false, error: lastError || 'Could not connect to Groq API.' };
+}
+
+// ─── Test Gemini API Key (Quota-Safe) ───────────────────────────────────────────
 
 export async function testGeminiApiKey(
   apiKey: string
@@ -148,46 +269,132 @@ export async function testGeminiApiKey(
   }
 
   const cleanKey = apiKey.trim();
+
+  // If user provided a Groq key (starts with 'gsk_'), route to Groq tester
+  if (cleanKey.startsWith('gsk_')) {
+    return testGroqApiKey(cleanKey);
+  }
+
   const start = Date.now();
 
   try {
-    // 1. Discover best available model or prioritize gemini-3.8-flash
-    const candidateList = ['gemini-3.8-flash', 'gemini-3.5-flash', ...DEFAULT_CANDIDATE_MODELS];
-    const uniqueCandidates = Array.from(new Set(candidateList));
+    // Step 1: Use GET /models to validate key and check available models WITHOUT burning generation quota
+    let targetModel = SettingsRepository.get('ai_active_model_name', '');
+    let availableModels: string[] = [];
+
+    try {
+      const listRes = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`,
+        { method: 'GET' },
+        6000
+      );
+
+      if (listRes.ok) {
+        const data = await listRes.json();
+        const modelsList: Array<{ name: string; supportedGenerationMethods?: string[] }> =
+          data?.models || [];
+
+        availableModels = modelsList
+          .filter(
+            (m) =>
+              !m.name.includes('1.5') && // STRICTLY EXCLUDE 1.5
+              (!m.supportedGenerationMethods ||
+                m.supportedGenerationMethods.includes('generateContent'))
+          )
+          .map((m) => m.name.replace(/^models\//, ''));
+
+        // If targetModel is already valid and present in availableModels, keep it
+        if (targetModel && !targetModel.includes('1.5') && availableModels.includes(targetModel)) {
+          // targetModel is good
+        } else {
+          // Pick best from DEFAULT_CANDIDATE_MODELS
+          const best = DEFAULT_CANDIDATE_MODELS.find((cand) => availableModels.includes(cand));
+          targetModel =
+            best ||
+            availableModels.find((m) => m.includes('flash')) ||
+            'gemini-3.5-flash';
+        }
+      } else {
+        const errJson = await listRes.json().catch(() => ({}));
+        const errStr = (errJson?.error?.message || '').toLowerCase();
+        if (
+          errStr.includes('api_key_invalid') ||
+          errStr.includes('api key not valid') ||
+          listRes.status === 400
+        ) {
+          return {
+            success: false,
+            error: 'Invalid Google Gemini API key. Please check your key in Google AI Studio.',
+          };
+        }
+        if (listRes.status === 429) {
+          return {
+            success: false,
+            error: 'Rate limit reached (15 RPM). Please wait 15–20 seconds before testing again.',
+          };
+        }
+      }
+    } catch {
+      // GET /models failed or timed out; fall back to candidate list
+    }
+
+    if (!targetModel || targetModel.includes('1.5')) {
+      targetModel = 'gemini-3.5-flash';
+    }
+
+    // Step 2: Perform ONE lightweight generation ping to verify the chosen model
+    // Ping queue prioritizes targetModel, followed by gemini-2.5-flash
+    const pingQueue = [targetModel];
+    if (targetModel !== 'gemini-2.5-flash') {
+      pingQueue.push('gemini-2.5-flash');
+    }
 
     let lastError = '';
 
-    for (const modelToTest of uniqueCandidates) {
+    for (const modelToPing of pingQueue) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToTest}:generateContent?key=${cleanKey}`;
-        const response = await fetchWithTimeout(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: 'Respond with exactly: OK' }] }],
-          }),
-        }, 8000);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToPing}:generateContent?key=${cleanKey}`;
+        const response = await fetchWithTimeout(
+          url,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: 'Respond with exactly: OK' }] }],
+            }),
+          },
+          8000
+        );
 
         const latencyMs = Date.now() - start;
 
         if (response.ok) {
-          SettingsRepository.set('ai_active_model_name', modelToTest);
-          return { success: true, latencyMs, modelUsed: modelToTest };
-        } else {
-          const errJson = await response.json().catch(() => ({}));
-          lastError = errJson?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-
-          // If the key itself is invalid or suspended, exit early
-          if (
-            lastError.toLowerCase().includes('api_key_invalid') ||
-            lastError.toLowerCase().includes('api key not valid') ||
-            (response.status === 400 && lastError.toLowerCase().includes('key'))
-          ) {
-            return { success: false, error: lastError };
-          }
+          SettingsRepository.set('ai_active_model_name', modelToPing);
+          return { success: true, latencyMs, modelUsed: modelToPing };
         }
+
+        const errJson = await response.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+
+        // If rate limit (429), STOP immediately! Do not cycle more!
+        if (response.status === 429 || errMsg.toLowerCase().includes('resource_exhausted')) {
+          SettingsRepository.set('ai_active_model_name', modelToPing);
+          return {
+            success: false,
+            error: `Rate limit reached (15 RPM on Google free tier). Please wait 15–20 seconds before testing again. (Target: ${modelToPing})`,
+          };
+        }
+
+        if (
+          errMsg.toLowerCase().includes('api_key_invalid') ||
+          errMsg.toLowerCase().includes('api key not valid')
+        ) {
+          return { success: false, error: 'Invalid Google Gemini API key.' };
+        }
+
+        lastError = errMsg;
       } catch (reqErr: any) {
-        lastError = reqErr?.message || 'Network error';
+        lastError = reqErr?.message || 'Network timeout';
       }
     }
 
@@ -213,17 +420,29 @@ export async function askAiCoPilot(
 
   const activeKey = primaryKey || fallbackKey;
 
+  // Dispatch based on provider
+  const runProvider = async (key: string): Promise<AiResponseResult> => {
+    if (key.startsWith('gsk_')) {
+      return executeGroqTurn(key, prompt, onTelemetryUpdate);
+    }
+    return executeGeminiTurn(key, prompt, onTelemetryUpdate);
+  };
+
   try {
-    onTelemetryUpdate?.('Connecting to Gemini Flash...');
-    return await executeGeminiTurn(activeKey, prompt, onTelemetryUpdate);
+    const isGroq = activeKey.startsWith('gsk_');
+    onTelemetryUpdate?.(isGroq ? 'Connecting to Groq...' : 'Connecting to Gemini Flash...');
+    return await runProvider(activeKey);
   } catch (err: any) {
     console.warn('[AI Co-Pilot] Primary failed:', err?.message);
 
     // Try fallback key if available and different
     if (fallbackKey && fallbackKey !== activeKey) {
       try {
-        onTelemetryUpdate?.('Switching to fallback key...');
-        return await executeGeminiTurn(fallbackKey, prompt, onTelemetryUpdate);
+        const isFallbackGroq = fallbackKey.startsWith('gsk_');
+        onTelemetryUpdate?.(
+          isFallbackGroq ? 'Switching to Groq fallback...' : 'Switching to secondary key...'
+        );
+        return await runProvider(fallbackKey);
       } catch (fallbackErr: any) {
         console.warn('[AI Co-Pilot] Fallback also failed:', fallbackErr?.message);
       }
@@ -232,9 +451,16 @@ export async function askAiCoPilot(
     // Gracefully degrade to offline local engine
     onTelemetryUpdate?.('Falling back to local calculation engine...');
     const offlineResult = runOfflineFallback(prompt);
-    const reason = err?.message?.toLowerCase().includes('cancel') || err?.message?.toLowerCase().includes('timeout')
+    const isRateLimit =
+      err?.message?.toLowerCase().includes('rate') ||
+      err?.message?.toLowerCase().includes('429') ||
+      err?.message?.toLowerCase().includes('resource_exhausted');
+    const reason = isRateLimit
+      ? '15 RPM Rate Limit'
+      : err?.message?.toLowerCase().includes('timeout')
       ? 'Cellular Latency Timeout'
       : 'Network Glitch';
+
     return {
       ...offlineResult,
       telemetry: `Offline Fallback (${reason}) ⚠️`,
@@ -290,7 +516,8 @@ function extractFinancialCard(
   const lowerReply = replyText.toLowerCase();
 
   // Afford / spend simulation (e.g. "spend 500", "afford 850", "buy 500 rs", "500 rs food")
-  const matchAmount = prompt.match(/(?:spend|buy|afford|order|pay)\s*(?:rs\.?|₹)?\s*(\d+)/i) ||
+  const matchAmount =
+    prompt.match(/(?:spend|buy|afford|order|pay)\s*(?:rs\.?|₹)?\s*(\d+)/i) ||
     prompt.match(/(\d+)\s*(?:rs|rupees)/i) ||
     prompt.match(/(?:rs\.?|₹)\s*(\d+)/i);
 
@@ -312,14 +539,19 @@ function extractFinancialCard(
       const originalWindowPace = Math.round(store.availableToSpend / timeframeDays);
       cushionText = `Leaves ₹${safeDailyPace}/day for next ${timeframeDays} days (vs ₹${originalWindowPace}/day without spend)`;
     } else {
-      cushionText = amount <= store.availableToSpend * 0.5
-        ? `Safe buffer of ₹${safeDailyPace}/day preserved for remaining ${store.daysRemainingInMonth} days`
-        : `Tight budget: Safe daily pace drops by ₹${Math.max(0, store.dailySpendLimit - safeDailyPace)}/day`;
+      cushionText =
+        amount <= store.availableToSpend * 0.5
+          ? `Safe buffer of ₹${safeDailyPace}/day preserved for remaining ${store.daysRemainingInMonth} days`
+          : `Tight budget: Safe daily pace drops by ₹${Math.max(
+              0,
+              store.dailySpendLimit - safeDailyPace
+            )}/day`;
     }
 
-    const percent = store.availableToSpend > 0
-      ? Math.max(10, Math.min(100, Math.round((newAvail / store.availableToSpend) * 100)))
-      : 0;
+    const percent =
+      store.availableToSpend > 0
+        ? Math.max(10, Math.min(100, Math.round((newAvail / store.availableToSpend) * 100)))
+        : 0;
 
     return {
       title,
@@ -366,11 +598,12 @@ async function executeGeminiTurn(
   userPrompt: string,
   onTelemetryUpdate?: (status: string) => void
 ): Promise<AiResponseResult> {
-  let modelName = SettingsRepository.get('ai_active_model_name', 'gemini-3.8-flash');
-  // Sanitize: ensure valid candidate model
-  if (!modelName || !DEFAULT_CANDIDATE_MODELS.includes(modelName)) {
-    modelName = 'gemini-3.8-flash';
-    SettingsRepository.set('ai_active_model_name', 'gemini-3.8-flash');
+  let modelName = SettingsRepository.get('ai_active_model_name', 'gemini-3.5-flash');
+
+  // Sanitize: ensure valid candidate model (and strictly avoid 1.5)
+  if (!modelName || modelName.includes('1.5') || !DEFAULT_CANDIDATE_MODELS.includes(modelName)) {
+    modelName = 'gemini-3.5-flash';
+    SettingsRepository.set('ai_active_model_name', 'gemini-3.5-flash');
   }
 
   let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -403,26 +636,33 @@ async function executeGeminiTurn(
 
   let res1: Response;
   try {
-    res1 = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    }, 35000);
-  } catch (initialErr: any) {
-    // Retry once if cellular data had a temporary hiccup
-    try {
-      onTelemetryUpdate?.('Re-connecting to Gemini Flash...');
-      res1 = await fetchWithTimeout(url, {
+    res1 = await fetchWithTimeout(
+      url,
+      {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
-      }, 35000);
+      },
+      35000
+    );
+  } catch (initialErr: any) {
+    try {
+      onTelemetryUpdate?.('Re-connecting to Gemini Flash...');
+      res1 = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+        35000
+      );
     } catch (retryErr: any) {
       throw new Error(retryErr?.message || initialErr?.message || 'Network timeout');
     }
   }
 
-  // If selected model is not available or 404, try other candidate models
+  // If selected model is not available or 404, fallback to other candidate models (excluding 1.5)
   if (!res1.ok) {
     const errData = await res1.json().catch(() => ({}));
     const errMsg = (errData?.error?.message || '').toLowerCase();
@@ -436,11 +676,15 @@ async function executeGeminiTurn(
         if (candidate === modelName) continue;
         const candidateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent?key=${apiKey}`;
         try {
-          const candidateRes = await fetchWithTimeout(candidateUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          }, 20000);
+          const candidateRes = await fetchWithTimeout(
+            candidateUrl,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody),
+            },
+            20000
+          );
           if (candidateRes.ok) {
             modelName = candidate;
             SettingsRepository.set('ai_active_model_name', candidate);
@@ -466,10 +710,10 @@ async function executeGeminiTurn(
   const functionCalls = parts.filter((p: any) => p.functionCall);
 
   let prefillData: any = null;
-  let telemetryLabels: string[] = [];
+  const telemetryLabels: string[] = [];
 
   if (functionCalls.length > 0) {
-    // Model requested local tool calls!
+    // Model requested local tool calls
     contents.push({
       role: 'model',
       parts,
@@ -511,27 +755,37 @@ async function executeGeminiTurn(
     }
 
     // Turn 2: Send tool results back to Gemini for final synthesis
+    // In Gemini REST API v1beta, function responses must use role: 'function'
     contents.push({
-      role: 'user',
+      role: 'function',
       parts: responseParts,
     });
 
     onTelemetryUpdate?.('Synthesizing financial advice...');
 
-    const res2 = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemInstructionText }],
-        },
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        },
-      }),
-    }, 35000);
+    const res2 = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: systemInstructionText }],
+          },
+          contents,
+          tools: [
+            {
+              function_declarations: GEMINI_TOOL_DECLARATIONS,
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+          },
+        }),
+      },
+      35000
+    );
 
     if (!res2.ok) {
       const err2 = await res2.json().catch(() => ({}));
@@ -546,7 +800,8 @@ async function executeGeminiTurn(
 
     return {
       text: finalText.trim() || 'Calculations complete.',
-      telemetry: telemetryLabels.length > 0 ? `Checked ${telemetryLabels.join(' • ')} ✓` : undefined,
+      telemetry:
+        telemetryLabels.length > 0 ? `Checked ${telemetryLabels.join(' • ')} ✓` : undefined,
       financialCard: card,
       prefillData,
     };
@@ -563,6 +818,137 @@ async function executeGeminiTurn(
   };
 }
 
+// ─── Groq API Engine (OpenAI-Compatible Tool Calling) ───────────────────────────
+
+async function executeGroqTurn(
+  apiKey: string,
+  userPrompt: string,
+  onTelemetryUpdate?: (status: string) => void
+): Promise<AiResponseResult> {
+  const modelName = SettingsRepository.get('ai_groq_active_model', 'qwen/qwen3.6-27b');
+  const systemInstructionText = buildDynamicSystemInstruction();
+  const groqTools = getGroqTools();
+
+  const messages: any[] = [
+    { role: 'system', content: systemInstructionText },
+    { role: 'user', content: userPrompt },
+  ];
+
+  onTelemetryUpdate?.(`Connecting to Groq (${modelName})...`);
+
+  const res1 = await fetchWithTimeout(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages,
+        tools: groqTools,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    },
+    25000
+  );
+
+  if (!res1.ok) {
+    const errData = await res1.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `Groq HTTP ${res1.status}`);
+  }
+
+  const data1 = await res1.json();
+  const choice = data1?.choices?.[0];
+  const msg = choice?.message;
+
+  if (msg?.tool_calls && msg.tool_calls.length > 0) {
+    messages.push(msg);
+    let prefillData: any = null;
+    const telemetryLabels: string[] = [];
+
+    for (const tc of msg.tool_calls) {
+      const toolName = tc.function.name;
+      let toolArgs: any = {};
+      try {
+        toolArgs = JSON.parse(tc.function.arguments || '{}');
+      } catch {}
+
+      onTelemetryUpdate?.(`Consulting local ${toolName.replace(/_/g, ' ')}...`);
+      telemetryLabels.push(toolName.replace(/^get_/, '').replace(/_/g, ' '));
+
+      if (toolName === 'prefill_transaction') {
+        prefillData = {
+          amount: toolArgs.amount,
+          type: toolArgs.type || 'expense',
+          account: toolArgs.account,
+          category: toolArgs.category,
+          note: toolArgs.note,
+        };
+      }
+
+      const toolResultJson = await executeAiTool(toolName, toolArgs);
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: toolResultJson,
+      });
+    }
+
+    onTelemetryUpdate?.('Synthesizing financial advice via Groq...');
+
+    const res2 = await fetchWithTimeout(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          temperature: 0.7,
+          max_tokens: 2048,
+        }),
+      },
+      25000
+    );
+
+    if (!res2.ok) {
+      const err2 = await res2.json().catch(() => ({}));
+      throw new Error(err2?.error?.message || `Groq Turn 2 HTTP ${res2.status}`);
+    }
+
+    const data2 = await res2.json();
+    const replyText = data2?.choices?.[0]?.message?.content || '';
+    const card = extractFinancialCard(userPrompt, replyText, prefillData);
+
+    return {
+      text: replyText.trim() || 'Calculations complete.',
+      telemetry:
+        telemetryLabels.length > 0
+          ? `Groq (${modelName}) • Checked ${telemetryLabels.join(' • ')} ✓`
+          : `Groq (${modelName})`,
+      financialCard: card,
+      prefillData,
+    };
+  }
+
+  // Direct response
+  const replyText = msg?.content || '';
+  const card = extractFinancialCard(userPrompt, replyText);
+  return {
+    text: replyText.trim() || 'I am ready to help you with your finances.',
+    telemetry: `Groq (${modelName})`,
+    financialCard: card,
+  };
+}
+
 // ─── Offline Regex Intent Matcher ───────────────────────────────────────────────
 
 function runOfflineFallback(prompt: string): AiResponseResult {
@@ -573,9 +959,12 @@ function runOfflineFallback(prompt: string): AiResponseResult {
   if (lower.includes('balance') || lower.includes('available') || lower.includes('how much money')) {
     const card = extractFinancialCard(prompt, 'available to spend');
     return {
-      text: `**Here is your current status:**\n\n` +
+      text:
+        `**Here is your current status:**\n\n` +
         `• **Available to Spend:** ₹${store.availableToSpend.toLocaleString('en-IN')}\n` +
-        `• **Safe Daily Limit:** ₹${store.dailySpendLimit.toLocaleString('en-IN')}/day (for the remaining ${store.daysRemainingInMonth} days of your cycle)\n` +
+        `• **Safe Daily Limit:** ₹${store.dailySpendLimit.toLocaleString(
+          'en-IN'
+        )}/day (for the remaining ${store.daysRemainingInMonth} days of your cycle)\n` +
         `• **Total Liquid Bank:** ₹${store.totalBankCashBalance.toLocaleString('en-IN')}`,
       telemetry: 'Offline Mode: Local Store Read ✓',
       financialCard: card,
@@ -583,7 +972,8 @@ function runOfflineFallback(prompt: string): AiResponseResult {
   }
 
   // Pattern 2: Afford / Spend simulation (e.g. "spend 500", "afford 850")
-  const matchAmount = prompt.match(/(?:spend|buy|afford|order|pay)\s*(?:rs\.?|₹)?\s*(\d+)/i) ||
+  const matchAmount =
+    prompt.match(/(?:spend|buy|afford|order|pay)\s*(?:rs\.?|₹)?\s*(\d+)/i) ||
     prompt.match(/(\d+)\s*(?:rs|rupees)/i);
 
   if (matchAmount) {
@@ -597,8 +987,12 @@ function runOfflineFallback(prompt: string): AiResponseResult {
       text: isSafe
         ? `**Yes, comfortably.** Your current safe balance absorbs this without stretching your daily reserve.\n\n` +
           `• Remaining after spend: ₹${newAvail.toLocaleString('en-IN')}\n` +
-          `• New daily safe pace: ₹${newPace.toLocaleString('en-IN')}/day (drops from ₹${store.dailySpendLimit}/day)`
-        : `**Tight squeeze.** Spending ₹${amount.toLocaleString('en-IN')} leaves you with ₹${newAvail.toLocaleString('en-IN')} ` +
+          `• New daily safe pace: ₹${newPace.toLocaleString('en-IN')}/day (drops from ₹${
+            store.dailySpendLimit
+          }/day)`
+        : `**Tight squeeze.** Spending ₹${amount.toLocaleString(
+            'en-IN'
+          )} leaves you with ₹${newAvail.toLocaleString('en-IN')} ` +
           `across your remaining ${store.daysRemainingInMonth} days (₹${newPace}/day). Proceed with caution.`,
       telemetry: 'Offline Mode: Local Math Simulation ✓',
       financialCard: card,
@@ -606,7 +1000,9 @@ function runOfflineFallback(prompt: string): AiResponseResult {
   }
 
   // Pattern 3: Log Chai / Transaction
-  const logMatch = prompt.match(/log\s*(?:rs\.?|₹)?\s*(\d+)(?:\s*(?:on|for)\s*(\w+))?(?:\s*(?:tag|tagged|note)\s*(.+))?/i);
+  const logMatch = prompt.match(
+    /log\s*(?:rs\.?|₹)?\s*(\d+)(?:\s*(?:on|for)\s*(\w+))?(?:\s*(?:tag|tagged|note)\s*(.+))?/i
+  );
   if (logMatch) {
     const amount = parseInt(logMatch[1], 10);
     const note = logMatch[3] || logMatch[2] || 'Manual Entry';
@@ -622,7 +1018,7 @@ function runOfflineFallback(prompt: string): AiResponseResult {
   }
 
   return {
-    text: `Offline Mode Active.\n\nI can calculate your balance, simulate a purchase (e.g. "Can I spend ₹500?"), or prefill transactions (e.g. "Log ₹20 Chai"). Configure your Gemini API Key in Settings for deep financial reasoning!`,
+    text: `Offline Mode Active.\n\nI can calculate your balance, simulate a purchase (e.g. "Can I spend ₹500?"), or prefill transactions (e.g. "Log ₹20 Chai"). Configure your Gemini or Groq API Key in Settings for deep financial reasoning!`,
     telemetry: 'Offline Mode Active',
   };
 }

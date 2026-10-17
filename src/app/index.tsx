@@ -21,6 +21,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { BottomTabBar } from '@/components/navigation/BottomTabBar';
 import { FAB } from '@/components/navigation/FAB';
+import { GlassmorphicSummaryBar } from '@/components/navigation/GlassmorphicSummaryBar';
 import { AiCoPilotContainer } from '@/components/ai';
 import { Colors } from '@/theme';
 import { useFinancialStore } from '@/stores';
@@ -155,8 +156,11 @@ export default function MainTabsPagerScreen() {
         onTabPress={handleTabPress}
       />
 
+      {/* A2: Glassmorphic Floating Summary Bar (hugs bottom above tab bar, alongside FAB) */}
+      <GlassmorphicSummaryBar bottomOffset={88} />
+
       {/* Floating Action Button for Transaction Entry */}
-      <FAB onPress={() => router.push('/add-transaction')} />
+      <FAB onPress={() => router.push('/add-transaction')} bottomOffset={88} />
 
       {/* Floating AI Co-Pilot Launcher & Morphing Overlay */}
       <AiCoPilotContainer />

@@ -2,7 +2,8 @@
  * MyWallet — AI Co-Pilot Settings Card
  *
  * Allows users to configure and test their Google Gemini API Key
- * (and optional fallback key) with live connection latency diagnostics.
+ * and optional Groq/Secondary fallback key with live connection latency diagnostics
+ * and active model selection.
  */
 
 import React, { useState } from 'react';
@@ -29,11 +30,11 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
+  Zap,
 } from 'lucide-react-native';
 import { SettingsRepository } from '@/repositories/settingsRepository';
-import { testGeminiApiKey } from '@/services/ai/aiService';
+import { testGeminiApiKey, testGroqApiKey } from '@/services/ai/aiService';
 import { useAiChatStore } from '@/stores/aiChatStore';
-import { Colors } from '@/theme';
 
 export function AiCoPilotSettingsCard() {
   const [apiKey, setApiKey] = useState<string>(() =>
@@ -42,8 +43,13 @@ export function AiCoPilotSettingsCard() {
   const [fallbackKey, setFallbackKey] = useState<string>(() =>
     SettingsRepository.get('ai_fallback_api_key', '')
   );
+  const [activeModel, setActiveModel] = useState<string>(() => {
+    const saved = SettingsRepository.get('ai_active_model_name', 'gemini-3.5-flash');
+    return saved.includes('1.5') ? 'gemini-3.5-flash' : saved;
+  });
   const [showKey, setShowKey] = useState<boolean>(false);
-  const [isTesting, setIsTesting] = useState<boolean>(false);
+  const [isTestingPrimary, setIsTestingPrimary] = useState<boolean>(false);
+  const [isTestingFallback, setIsTestingFallback] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     latencyMs?: number;
@@ -61,30 +67,58 @@ export function AiCoPilotSettingsCard() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     SettingsRepository.set('ai_gemini_api_key', apiKey.trim());
     SettingsRepository.set('ai_fallback_api_key', fallbackKey.trim());
+    SettingsRepository.set('ai_active_model_name', activeModel);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
   };
 
-  const handleTestConnection = async () => {
-    const keyToTest = apiKey.trim() || fallbackKey.trim();
+  const handleSelectModel = (model: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveModel(model);
+    SettingsRepository.set('ai_active_model_name', model);
+  };
+
+  const handleTestKey = async (target: 'primary' | 'fallback') => {
+    const keyToTest = target === 'primary' ? apiKey.trim() : fallbackKey.trim();
     if (!keyToTest) {
-      setTestResult({ success: false, error: 'Please enter an API key first.' });
+      setTestResult({
+        success: false,
+        error: `Please enter a ${target === 'primary' ? 'primary' : 'fallback'} API key first.`,
+      });
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsTesting(true);
+    if (target === 'primary') {
+      setIsTestingPrimary(true);
+    } else {
+      setIsTestingFallback(true);
+    }
     setTestResult(null);
 
-    // Save before testing
+    // Persist active settings before testing
     SettingsRepository.set('ai_gemini_api_key', apiKey.trim());
     SettingsRepository.set('ai_fallback_api_key', fallbackKey.trim());
+    SettingsRepository.set('ai_active_model_name', activeModel);
 
-    const result = await testGeminiApiKey(keyToTest);
-    setIsTesting(false);
+    let result;
+    if (keyToTest.startsWith('gsk_')) {
+      result = await testGroqApiKey(keyToTest);
+    } else {
+      result = await testGeminiApiKey(keyToTest);
+    }
+
+    if (target === 'primary') {
+      setIsTestingPrimary(false);
+    } else {
+      setIsTestingFallback(false);
+    }
     setTestResult(result);
 
     if (result.success) {
+      if (result.modelUsed && !result.modelUsed.includes('Groq')) {
+        setActiveModel(result.modelUsed);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -154,12 +188,11 @@ export function AiCoPilotSettingsCard() {
       <View style={styles.inputGroup}>
         <View style={styles.inputLabelRow}>
           <Text style={styles.inputLabel}>PRIMARY API KEY (GOOGLE GEMINI FLASH)</Text>
-          <TouchableOpacity onPress={() => setShowKey(!showKey)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            {showKey ? (
-              <EyeOff size={15} color="#8F937A" />
-            ) : (
-              <Eye size={15} color="#8F937A" />
-            )}
+          <TouchableOpacity
+            onPress={() => setShowKey(!showKey)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {showKey ? <EyeOff size={15} color="#8F937A" /> : <Eye size={15} color="#8F937A" />}
           </TouchableOpacity>
         </View>
 
@@ -181,6 +214,53 @@ export function AiCoPilotSettingsCard() {
         </View>
       </View>
 
+      {/* Active Model Selector */}
+      <View style={styles.modelGroup}>
+        <Text style={styles.inputLabel}>PREFERRED GEMINI MODEL</Text>
+        <View style={styles.modelPillsRow}>
+          <TouchableOpacity
+            style={[
+              styles.modelPill,
+              activeModel === 'gemini-3.5-flash' && styles.modelPillActive,
+            ]}
+            onPress={() => handleSelectModel('gemini-3.5-flash')}
+            activeOpacity={0.7}
+          >
+            <Zap
+              size={12}
+              color={activeModel === 'gemini-3.5-flash' ? '#101319' : '#C8F322'}
+              style={{ marginRight: 4 }}
+            />
+            <Text
+              style={[
+                styles.modelPillText,
+                activeModel === 'gemini-3.5-flash' && styles.modelPillTextActive,
+              ]}
+            >
+              Gemini 3.5 Flash (Fast & Smart)
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.modelPill,
+              activeModel === 'gemini-2.5-flash' && styles.modelPillActive,
+            ]}
+            onPress={() => handleSelectModel('gemini-2.5-flash')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.modelPillText,
+                activeModel === 'gemini-2.5-flash' && styles.modelPillTextActive,
+              ]}
+            >
+              Gemini 2.5 Flash (Stable)
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Optional Fallback Key */}
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>FALLBACK API KEY (OPTIONAL - GROQ OR 2ND KEY)</Text>
@@ -188,7 +268,7 @@ export function AiCoPilotSettingsCard() {
           <Key size={16} color="#8F937A" style={{ marginRight: 8 }} />
           <TextInput
             style={styles.textInput}
-            placeholder="Optional secondary key for failover"
+            placeholder="gsk_... or AIzaSy..."
             placeholderTextColor="#686C56"
             value={fallbackKey}
             onChangeText={(t) => {
@@ -200,6 +280,13 @@ export function AiCoPilotSettingsCard() {
             autoCorrect={false}
           />
         </View>
+        {fallbackKey.trim().length > 0 && (
+          <Text style={styles.fallbackHint}>
+            {fallbackKey.trim().startsWith('gsk_')
+              ? '⚡ Groq API key detected: Will provide ultra-fast failover if Gemini is busy.'
+              : '✓ Secondary Gemini key configured for seamless quota rollover.'}
+          </Text>
+        )}
       </View>
 
       {/* Action Buttons Row */}
@@ -210,25 +297,43 @@ export function AiCoPilotSettingsCard() {
           activeOpacity={0.75}
         >
           <Text style={styles.saveBtnText}>
-            {isSaved ? 'Saved! ✓' : 'Save Key'}
+            {isSaved ? 'Saved! ✓' : 'Save'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.testBtn}
-          onPress={handleTestConnection}
-          disabled={isTesting}
+          onPress={() => handleTestKey('primary')}
+          disabled={isTestingPrimary || isTestingFallback}
           activeOpacity={0.75}
         >
-          {isTesting ? (
+          {isTestingPrimary ? (
             <ActivityIndicator size="small" color="#C8F322" />
           ) : (
             <>
-              <RefreshCw size={14} color="#C8F322" style={{ marginRight: 5 }} />
-              <Text style={styles.testBtnText}>Test Connection</Text>
+              <RefreshCw size={13} color="#C8F322" style={{ marginRight: 5 }} />
+              <Text style={styles.testBtnText}>Test Primary</Text>
             </>
           )}
         </TouchableOpacity>
+
+        {fallbackKey.trim().length > 0 && (
+          <TouchableOpacity
+            style={styles.testFallbackBtn}
+            onPress={() => handleTestKey('fallback')}
+            disabled={isTestingPrimary || isTestingFallback}
+            activeOpacity={0.75}
+          >
+            {isTestingFallback ? (
+              <ActivityIndicator size="small" color="#00F0FF" />
+            ) : (
+              <>
+                <RefreshCw size={13} color="#00F0FF" style={{ marginRight: 5 }} />
+                <Text style={styles.testFallbackBtnText}>Test Fallback</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Live Connection Diagnostics Badge */}
@@ -243,7 +348,7 @@ export function AiCoPilotSettingsCard() {
             <>
               <CheckCircle2 size={16} color="#C8F322" style={{ marginRight: 6 }} />
               <Text style={styles.resultSuccessText}>
-                Connected! ~{testResult.latencyMs}ms ({testResult.modelUsed || 'Gemini Flash'})
+                Connected! ~{testResult.latencyMs}ms ({testResult.modelUsed || activeModel})
               </Text>
             </>
           ) : (
@@ -348,11 +453,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#101319',
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 12,
     borderWidth: 1,
     borderColor: 'rgba(200, 243, 34, 0.2)',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   bannerTitle: {
     fontFamily: 'PlusJakartaSans-SemiBold',
@@ -361,12 +466,12 @@ const styles = StyleSheet.create({
   },
   bannerDesc: {
     fontFamily: 'PlusJakartaSans-Regular',
-    fontSize: 11,
-    color: '#8F937A',
+    fontSize: 10.5,
+    color: '#A8AF90',
     marginTop: 2,
   },
   inputGroup: {
-    marginBottom: 12,
+    marginBottom: 14,
   },
   inputLabelRow: {
     flexDirection: 'row',
@@ -375,8 +480,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   inputLabel: {
-    fontFamily: 'JetBrainsMono-Medium',
-    fontSize: 9.5,
+    fontFamily: 'JetBrainsMono-Bold',
+    fontSize: 10,
     color: '#8F937A',
     letterSpacing: 0.5,
   },
@@ -396,14 +501,53 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: '#FFFFFF',
   },
+  modelGroup: {
+    marginBottom: 14,
+  },
+  modelPillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  modelPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#101319',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  modelPillActive: {
+    backgroundColor: '#C8F322',
+    borderColor: '#C8F322',
+  },
+  modelPillText: {
+    fontFamily: 'PlusJakartaSans-SemiBold',
+    fontSize: 11,
+    color: '#A8AF90',
+  },
+  modelPillTextActive: {
+    color: '#101319',
+  },
+  fallbackHint: {
+    fontFamily: 'PlusJakartaSans-Regular',
+    fontSize: 10.5,
+    color: '#00F0FF',
+    marginTop: 5,
+    paddingHorizontal: 2,
+  },
   actionsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     marginTop: 4,
     marginBottom: 10,
   },
   saveBtn: {
-    flex: 1,
+    flex: 0.8,
     backgroundColor: '#1D2026',
     borderRadius: 12,
     paddingVertical: 10,
@@ -413,7 +557,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     fontFamily: 'PlusJakartaSans-SemiBold',
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#E1E2EB',
   },
   testBtn: {
@@ -429,8 +573,24 @@ const styles = StyleSheet.create({
   },
   testBtnText: {
     fontFamily: 'PlusJakartaSans-SemiBold',
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#C8F322',
+  },
+  testFallbackBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+  },
+  testFallbackBtnText: {
+    fontFamily: 'PlusJakartaSans-SemiBold',
+    fontSize: 12.5,
+    color: '#00F0FF',
   },
   resultBadge: {
     flexDirection: 'row',

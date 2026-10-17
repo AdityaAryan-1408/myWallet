@@ -22,33 +22,34 @@ import { Colors, Shapes } from '@/theme';
 
 interface HeroBreathingHaloProps {
   isDeficit?: boolean;
+  haloColor?: string;
 }
 
-export function HeroBreathingHalo({ isDeficit = false }: HeroBreathingHaloProps) {
+export function HeroBreathingHalo({ isDeficit = false, haloColor }: HeroBreathingHaloProps) {
   const haloOpacity = useSharedValue(0.18);
 
   useEffect(() => {
     haloOpacity.value = withRepeat(
       withSequence(
-        withTiming(0.65, {
-          duration: 2400,
+        withTiming(isDeficit ? 0.75 : 0.65, {
+          duration: isDeficit ? 1800 : 2400,
           easing: Easing.inOut(Easing.sin),
         }),
-        withTiming(0.16, {
-          duration: 2400,
+        withTiming(isDeficit ? 0.22 : 0.16, {
+          duration: isDeficit ? 1800 : 2400,
           easing: Easing.inOut(Easing.sin),
         })
       ),
       -1,
       true
     );
-  }, []);
+  }, [isDeficit, haloOpacity]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: haloOpacity.value,
   }));
 
-  const haloColor = isDeficit ? Colors.expense : Colors.chartreuse;
+  const activeColor = haloColor ?? (isDeficit ? Colors.expense : Colors.chartreuse);
 
   return (
     <Animated.View
@@ -56,8 +57,8 @@ export function HeroBreathingHalo({ isDeficit = false }: HeroBreathingHaloProps)
       style={[
         styles.haloBorder,
         {
-          borderColor: haloColor,
-          shadowColor: haloColor,
+          borderColor: activeColor,
+          shadowColor: activeColor,
         },
         animStyle,
       ]}

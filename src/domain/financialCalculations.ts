@@ -293,3 +293,166 @@ export function formatINR(amount: number, includeDecimals: boolean = false): str
   }
   return `₹${Math.round(rounded).toLocaleString('en-IN')}`;
 }
+
+export type FinancialHealthTier = 'healthy' | 'caution' | 'critical';
+
+export interface FinancialHealthInput {
+  availableToSpend: number;
+  overallBudget?: {
+    totalBudget: number;
+    remainingCapital: number;
+    burnedPercentage: number;
+  } | null;
+  totalBankCashBalance?: number;
+}
+
+export interface FinancialHealthResult {
+  tier: FinancialHealthTier;
+  remainingPercentage: number;
+  badgeLabel: string;
+  badgeColor: string;
+  badgeBg: string;
+  badgeBorder: string;
+  accentColor: string;
+  secondaryColor: string;
+  borderColor: string;
+  glowColor: string;
+}
+
+/**
+ * Derives dynamic financial health state from available capital and budget progress.
+ *
+ * Tiers:
+ * - Healthy (>60% budget remaining): Calm emerald-to-teal gradient (#10B981 / #0D9488)
+ * - Caution (30–60% budget remaining): Warm amber-to-gold gradient (#F59E0B / #D97706)
+ * - Critical (<30% or overspent): Deep crimson pulse (#EF4444 / #991B1B)
+ */
+export function calculateFinancialHealth({
+  availableToSpend,
+  overallBudget,
+  totalBankCashBalance = 0,
+}: FinancialHealthInput): FinancialHealthResult {
+  // If in deficit / overspent, immediately critical
+  if (availableToSpend < 0) {
+    return {
+      tier: 'critical',
+      remainingPercentage: 0,
+      badgeLabel: 'DEFICIT ALERT',
+      badgeColor: '#F87171',
+      badgeBg: 'rgba(239, 68, 68, 0.16)',
+      badgeBorder: 'rgba(239, 68, 68, 0.35)',
+      accentColor: '#EF4444',
+      secondaryColor: '#991B1B',
+      borderColor: 'rgba(239, 68, 68, 0.50)',
+      glowColor: 'rgba(239, 68, 68, 0.40)',
+    };
+  }
+
+  // If active overall monthly budget exists
+  if (overallBudget && overallBudget.totalBudget > 0) {
+    const remaining = Math.max(0, overallBudget.remainingCapital);
+    const pct = Math.round((remaining / overallBudget.totalBudget) * 100);
+
+    if (pct > 60) {
+      return {
+        tier: 'healthy',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% BUDGET REMAINING`,
+        badgeColor: '#34D399',
+        badgeBg: 'rgba(16, 185, 129, 0.12)',
+        badgeBorder: 'rgba(16, 185, 129, 0.28)',
+        accentColor: '#10B981',
+        secondaryColor: '#0D9488',
+        borderColor: 'rgba(16, 185, 129, 0.38)',
+        glowColor: 'rgba(16, 185, 129, 0.30)',
+      };
+    } else if (pct >= 30) {
+      return {
+        tier: 'caution',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% BUDGET REMAINING`,
+        badgeColor: '#FBBF24',
+        badgeBg: 'rgba(245, 158, 11, 0.14)',
+        badgeBorder: 'rgba(245, 158, 11, 0.32)',
+        accentColor: '#F59E0B',
+        secondaryColor: '#D97706',
+        borderColor: 'rgba(245, 158, 11, 0.42)',
+        glowColor: 'rgba(245, 158, 11, 0.30)',
+      };
+    } else {
+      return {
+        tier: 'critical',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% BUDGET CRITICAL`,
+        badgeColor: '#F87171',
+        badgeBg: 'rgba(239, 68, 68, 0.16)',
+        badgeBorder: 'rgba(239, 68, 68, 0.35)',
+        accentColor: '#EF4444',
+        secondaryColor: '#991B1B',
+        borderColor: 'rgba(239, 68, 68, 0.50)',
+        glowColor: 'rgba(239, 68, 68, 0.40)',
+      };
+    }
+  }
+
+  // Fallback: derived from liquid cash ratio
+  if (totalBankCashBalance > 0) {
+    const ratio = availableToSpend / totalBankCashBalance;
+    const pct = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+
+    if (ratio > 0.60) {
+      return {
+        tier: 'healthy',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% CAPITAL LIQUID`,
+        badgeColor: '#34D399',
+        badgeBg: 'rgba(16, 185, 129, 0.12)',
+        badgeBorder: 'rgba(16, 185, 129, 0.28)',
+        accentColor: '#10B981',
+        secondaryColor: '#0D9488',
+        borderColor: 'rgba(16, 185, 129, 0.38)',
+        glowColor: 'rgba(16, 185, 129, 0.30)',
+      };
+    } else if (ratio >= 0.30) {
+      return {
+        tier: 'caution',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% CAPITAL LIQUID`,
+        badgeColor: '#FBBF24',
+        badgeBg: 'rgba(245, 158, 11, 0.14)',
+        badgeBorder: 'rgba(245, 158, 11, 0.32)',
+        accentColor: '#F59E0B',
+        secondaryColor: '#D97706',
+        borderColor: 'rgba(245, 158, 11, 0.42)',
+        glowColor: 'rgba(245, 158, 11, 0.30)',
+      };
+    } else {
+      return {
+        tier: 'critical',
+        remainingPercentage: pct,
+        badgeLabel: `${pct}% CAPITAL CRITICAL`,
+        badgeColor: '#F87171',
+        badgeBg: 'rgba(239, 68, 68, 0.16)',
+        badgeBorder: 'rgba(239, 68, 68, 0.35)',
+        accentColor: '#EF4444',
+        secondaryColor: '#991B1B',
+        borderColor: 'rgba(239, 68, 68, 0.50)',
+        glowColor: 'rgba(239, 68, 68, 0.40)',
+      };
+    }
+  }
+
+  // Default optimal healthy state
+  return {
+    tier: 'healthy',
+    remainingPercentage: 100,
+    badgeLabel: 'OPTIMAL HEALTH',
+    badgeColor: '#34D399',
+    badgeBg: 'rgba(16, 185, 129, 0.12)',
+    badgeBorder: 'rgba(16, 185, 129, 0.28)',
+    accentColor: '#10B981',
+    secondaryColor: '#0D9488',
+    borderColor: 'rgba(16, 185, 129, 0.38)',
+    glowColor: 'rgba(16, 185, 129, 0.30)',
+  };
+}
