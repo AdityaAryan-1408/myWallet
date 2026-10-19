@@ -429,7 +429,7 @@ export default function AccountsReservationsScreen({ isTab = false }: { isTab?: 
                               </Text>
                               {isPrimary && (
                                 <View style={styles.primaryBadge}>
-                                  <Star size={10} color="#000" fill="#000" />
+                                  <Star size={10} color={Colors.onPrimary} fill={Colors.onPrimary} />
                                   <Text style={styles.primaryBadgeText}>PRIMARY</Text>
                                 </View>
                               )}
@@ -999,14 +999,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: Colors.chartreuse,
+    backgroundColor: Colors.primaryFixed,
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: Shapes.pill,
   },
   primaryBadgeText: {
     ...Typography.labelCaps,
-    color: '#000',
+    color: Colors.onPrimary,
     fontSize: 8,
     fontWeight: '800',
   },

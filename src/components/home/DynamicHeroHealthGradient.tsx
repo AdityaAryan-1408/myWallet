@@ -26,6 +26,7 @@ import { Shapes } from '@/theme';
 interface DynamicHeroHealthGradientProps {
   healthTier: FinancialHealthTier;
   borderRadius?: number;
+  isLight?: boolean;
 }
 
 interface TierGradientConfig {
@@ -41,7 +42,7 @@ interface TierGradientConfig {
   specularOpacity: number;
 }
 
-const TIER_CONFIGS: Record<FinancialHealthTier, TierGradientConfig> = {
+const TIER_CONFIGS_DARK: Record<FinancialHealthTier, TierGradientConfig> = {
   healthy: {
     linearStart: '#042F2E',
     linearMid: '#064E3B',
@@ -80,9 +81,49 @@ const TIER_CONFIGS: Record<FinancialHealthTier, TierGradientConfig> = {
   },
 };
 
+const TIER_CONFIGS_LIGHT: Record<FinancialHealthTier, TierGradientConfig> = {
+  healthy: {
+    linearStart: '#A7F3D0',
+    linearMid: '#D1FAE5',
+    linearEnd: '#F0FDF4',
+    linearStartOpacity: 0.85,
+    linearMidOpacity: 0.60,
+    linearEndOpacity: 0.25,
+    radialColor: '#059669',
+    radialOpacity: 0.18,
+    specularColor: '#10B981',
+    specularOpacity: 0.22,
+  },
+  caution: {
+    linearStart: '#FDE68A',
+    linearMid: '#FEF3C7',
+    linearEnd: '#FFFBEB',
+    linearStartOpacity: 0.85,
+    linearMidOpacity: 0.60,
+    linearEndOpacity: 0.25,
+    radialColor: '#D97706',
+    radialOpacity: 0.18,
+    specularColor: '#F59E0B',
+    specularOpacity: 0.22,
+  },
+  critical: {
+    linearStart: '#FECDD3',
+    linearMid: '#FFE4E6',
+    linearEnd: '#FFF1F2',
+    linearStartOpacity: 0.88,
+    linearMidOpacity: 0.62,
+    linearEndOpacity: 0.25,
+    radialColor: '#E11D48',
+    radialOpacity: 0.20,
+    specularColor: '#EF4444',
+    specularOpacity: 0.24,
+  },
+};
+
 export function DynamicHeroHealthGradient({
   healthTier,
   borderRadius = Shapes.xxl,
+  isLight = false,
 }: DynamicHeroHealthGradientProps) {
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
@@ -129,7 +170,8 @@ export function DynamicHeroHealthGradient({
     }
   };
 
-  const config = TIER_CONFIGS[healthTier] ?? TIER_CONFIGS.healthy;
+  const configs = isLight ? TIER_CONFIGS_LIGHT : TIER_CONFIGS_DARK;
+  const config = configs[healthTier] ?? configs.healthy;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={handleLayout}>
@@ -159,7 +201,7 @@ export function DynamicHeroHealthGradient({
                 stopColor={config.linearEnd}
                 stopOpacity={config.linearEndOpacity}
               />
-              <Stop offset="100%" stopColor="#0B0D11" stopOpacity={0.0} />
+              <Stop offset="100%" stopColor={isLight ? '#FFFFFF' : '#0B0D11'} stopOpacity={0.0} />
             </LinearGradient>
 
             {/* Ambient Corner Glow Radial */}

@@ -31,6 +31,7 @@ import { Colors, PaperTheme } from '@/theme';
 import { useFinancialStore } from '@/stores';
 import { AiIntelligenceService } from '@/services/aiIntelligenceService';
 import { NotificationService } from '@/services/notificationService';
+import { DynamicIconService } from '@/services';
 
 // Prevent splash screen from auto-hiding before fonts load
 SplashScreen.preventAutoHideAsync();
@@ -74,6 +75,7 @@ export default function RootLayout() {
       reconcileNotifications('launch').catch((error) => {
         console.warn('Notification launch reconciliation failed:', error);
       });
+      DynamicIconService.syncIcon().catch(() => {});
     } catch (e) {
       console.warn('Database initialization deferred:', e);
     } finally {
@@ -81,10 +83,15 @@ export default function RootLayout() {
     }
 
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (isMounted && nextState === 'active') {
-        reconcileNotifications('foreground').catch((error) => {
-          console.warn('Notification foreground reconciliation failed:', error);
-        });
+      if (isMounted) {
+        if (nextState === 'active') {
+          reconcileNotifications('foreground').catch((error) => {
+            console.warn('Notification foreground reconciliation failed:', error);
+          });
+          DynamicIconService.syncIcon().catch(() => {});
+        } else if (nextState === 'background') {
+          DynamicIconService.syncIcon().catch(() => {});
+        }
       }
     });
 

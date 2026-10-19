@@ -46,6 +46,7 @@ import {
   Bell,
   BellRing,
   Palette,
+  Volume2,
 } from 'lucide-react-native';
 
 import {
@@ -53,7 +54,7 @@ import {
   BackupRepository,
   TransactionRepository,
 } from '@/repositories';
-import { NotificationService } from '@/services';
+import { NotificationService, SoundService, DynamicIconService, type AppIconVariant } from '@/services';
 import { WidgetPreviewCard } from '@/components/widget';
 import { useFinancialStore, useThemeStore } from '@/stores';
 import {
@@ -86,6 +87,15 @@ interface ThemeOption {
   accentColor: string;
   checkColor?: string;
 }
+
+export const HIDDEN_THEME_MODES: ThemeMode[] = [
+  'emerald',
+  'crimson',
+  'dune',
+  'sunset',
+  'amethyst',
+  'sapphire',
+];
 
 const THEME_OPTIONS: ThemeOption[] = [
   {
@@ -240,6 +250,13 @@ export function SettingsScreen() {
     else if (params.section === 'preferences') setActiveTab('preferences');
   }, [params.section]);
 
+  // Gracefully migrate deprecated / hidden theme modes to default 'dark'
+  useEffect(() => {
+    if (HIDDEN_THEME_MODES.includes(themeMode)) {
+      setThemeMode('dark');
+    }
+  }, [themeMode, setThemeMode]);
+
   // Local settings state
   const [cycleResetDay, setCycleResetDay] = useState<number>(() =>
     SettingsRepository.getCycleResetDay()
@@ -268,6 +285,15 @@ export function SettingsScreen() {
   );
   const [reminderTime, setReminderTime] = useState<string>(() =>
     SettingsRepository.getPreferredReminderTime()
+  );
+  const [soundsEnabled, setSoundsEnabled] = useState<boolean>(() =>
+    SettingsRepository.getSoundsEnabled()
+  );
+  const [dynamicIconEnabled, setDynamicIconEnabled] = useState<boolean>(() =>
+    SettingsRepository.getDynamicIconEnabled()
+  );
+  const [activeIconVariant, setActiveIconVariantState] = useState<AppIconVariant>(() =>
+    (SettingsRepository.getActiveIconVariant() as AppIconVariant) || 'healthy'
   );
 
   // Modals state
@@ -336,6 +362,41 @@ export function SettingsScreen() {
     setHapticsEnabled(val);
     SettingsRepository.setHapticsEnabled(val);
     if (val) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleToggleSounds = (val: boolean) => {
+    setSoundsEnabled(val);
+    SettingsRepository.setSoundsEnabled(val);
+    SoundService.refreshSettings();
+    if (val) {
+      Haptics.selectionAsync();
+      SoundService.playPreview('income');
+    }
+  };
+
+  const handleToggleDynamicIcon = async (val: boolean) => {
+    setDynamicIconEnabled(val);
+    SettingsRepository.setDynamicIconEnabled(val);
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (val) {
+      const active = await DynamicIconService.syncIcon();
+      setActiveIconVariantState(active);
+    } else {
+      const active = await DynamicIconService.setIcon('healthy');
+      setActiveIconVariantState(active);
+    }
+  };
+
+  const handleSelectTestIcon = async (variant: AppIconVariant) => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const active = await DynamicIconService.setIcon(variant);
+    setActiveIconVariantState(active);
+  };
+
+  const handleResetAutoSync = async () => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const active = await DynamicIconService.syncIcon();
+    setActiveIconVariantState(active);
   };
 
   const handleToggleNotifications = async (val: boolean) => {
@@ -468,7 +529,7 @@ export function SettingsScreen() {
 
               {/* 4 Interactive Visual Palette Cards */}
               <View style={styles.themeGrid}>
-                {THEME_OPTIONS.map((theme) => {
+                {THEME_OPTIONS.filter((theme) => !HIDDEN_THEME_MODES.includes(theme.mode)).map((theme) => {
                   const isSelected = themeMode === theme.mode;
                   return (
                     <TouchableOpacity
@@ -708,6 +769,224 @@ export function SettingsScreen() {
                   thumbColor={hapticsEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
                 />
               </View>
+            </View>
+
+            {/* Ambient Sound Design Switch (Batch 2: A8) */}
+            <View style={styles.sectionCard}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchMeta}>
+                  <View style={styles.cardHeader}>
+                    <Volume2 size={16} color={Colors.chartreuse} />
+                    <Text style={styles.cardHeaderTitle}>AMBIENT SOUND DESIGN</Text>
+                  </View>
+                  <Text style={styles.cardDesc}>
+                    Acoustic branding tones for transactions, refresh, and milestones.
+                  </Text>
+                </View>
+                <Switch
+                  value={soundsEnabled}
+                  onValueChange={handleToggleSounds}
+                  trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
+                  thumbColor={soundsEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
+                />
+              </View>
+
+              {soundsEnabled && (
+                <View style={styles.soundPreviewContainer}>
+                  <Text style={styles.soundPreviewLabel}>TEST ACOUSTIC TONES</Text>
+                  <View style={styles.soundPreviewRow}>
+                    <TouchableOpacity
+                      style={styles.soundPreviewPill}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        SoundService.playPreview('income');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>💰</Text>
+                      <Text style={styles.soundPreviewPillText}>Income</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.soundPreviewPill}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        SoundService.playPreview('expense');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>💸</Text>
+                      <Text style={styles.soundPreviewPillText}>Expense</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.soundPreviewPill}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        SoundService.playPreview('refresh');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>📊</Text>
+                      <Text style={styles.soundPreviewPillText}>Refresh</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.soundPreviewPill}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        SoundService.playPreview('goal');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>✅</Text>
+                      <Text style={styles.soundPreviewPillText}>Goal</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.soundPreviewPill}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        SoundService.playPreview('budget_warning');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🔔</Text>
+                      <Text style={styles.soundPreviewPillText}>Warning</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Dynamic App Icon (Batch 2: A9) */}
+            <View style={styles.sectionCard}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchMeta}>
+                  <View style={styles.cardHeader}>
+                    <Smartphone size={16} color={Colors.chartreuse} />
+                    <Text style={styles.cardHeaderTitle}>DYNAMIC APP ICON</Text>
+                  </View>
+                  <Text style={styles.cardDesc}>
+                    Home screen launcher icon adapts dynamically to your financial velocity & goal achievements.
+                  </Text>
+                </View>
+                <Switch
+                  value={dynamicIconEnabled}
+                  onValueChange={handleToggleDynamicIcon}
+                  trackColor={{ false: Colors.surfaceContainerHighest, true: Colors.primaryContainer }}
+                  thumbColor={dynamicIconEnabled ? Colors.primaryFixed : Colors.onSurfaceVariant}
+                />
+              </View>
+
+              {dynamicIconEnabled && (
+                <View style={styles.soundPreviewContainer}>
+                  <View style={styles.dynamicIconStatusRow}>
+                    <Text style={styles.soundPreviewLabel}>ACTIVE HOME SCREEN BADGE</Text>
+                    <View
+                      style={[
+                        styles.dynamicIconBadge,
+                        activeIconVariant === 'critical'
+                          ? styles.badgeCritical
+                          : activeIconVariant === 'caution'
+                          ? styles.badgeCaution
+                          : activeIconVariant === 'goal'
+                          ? styles.badgeGoal
+                          : styles.badgeHealthy,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.dynamicIconDot,
+                          activeIconVariant === 'critical'
+                            ? { backgroundColor: '#EF4444' }
+                            : activeIconVariant === 'caution'
+                            ? { backgroundColor: '#F59E0B' }
+                            : activeIconVariant === 'goal'
+                            ? { backgroundColor: '#FCD34D' }
+                            : { backgroundColor: '#D4FF32' },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.dynamicIconBadgeText,
+                          activeIconVariant === 'critical'
+                            ? { color: '#F87171' }
+                            : activeIconVariant === 'caution'
+                            ? { color: '#FBBF24' }
+                            : activeIconVariant === 'goal'
+                            ? { color: '#FDE047' }
+                            : { color: Colors.chartreuse },
+                        ]}
+                      >
+                        {activeIconVariant.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.soundPreviewLabel}>TEST LAUNCHER STATES</Text>
+                  <View style={styles.soundPreviewRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.soundPreviewPill,
+                        activeIconVariant === 'healthy' && styles.iconPillActive,
+                      ]}
+                      onPress={() => handleSelectTestIcon('healthy')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🟢</Text>
+                      <Text style={styles.soundPreviewPillText}>Healthy</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.soundPreviewPill,
+                        activeIconVariant === 'caution' && styles.iconPillActive,
+                      ]}
+                      onPress={() => handleSelectTestIcon('caution')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🟡</Text>
+                      <Text style={styles.soundPreviewPillText}>Caution</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.soundPreviewPill,
+                        activeIconVariant === 'critical' && styles.iconPillActive,
+                      ]}
+                      onPress={() => handleSelectTestIcon('critical')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🔴</Text>
+                      <Text style={styles.soundPreviewPillText}>Critical</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.soundPreviewPill,
+                        activeIconVariant === 'goal' && styles.iconPillActive,
+                      ]}
+                      onPress={() => handleSelectTestIcon('goal')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🎯</Text>
+                      <Text style={styles.soundPreviewPillText}>Goal Hit</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.soundPreviewPill, styles.iconPillAuto]}
+                      onPress={handleResetAutoSync}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.soundPreviewPillEmoji}>🔄</Text>
+                      <Text style={[styles.soundPreviewPillText, { color: Colors.chartreuse }]}>
+                        Auto Sync
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* Notifications & Reminders (Phase 16) */}
@@ -1551,4 +1830,92 @@ const styles = StyleSheet.create({
     color: Colors.primaryFixed,
     letterSpacing: 0.5,
   },
+  soundPreviewContainer: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.strokeSubtle,
+    gap: 8,
+  },
+  soundPreviewLabel: {
+    ...Typography.labelCaps,
+    color: Colors.onSurfaceVariant,
+    fontSize: 10,
+    letterSpacing: 1.1,
+  },
+  soundPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  soundPreviewPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  soundPreviewPillEmoji: {
+    fontSize: 12,
+  },
+  soundPreviewPillText: {
+    ...Typography.bodySmMedium,
+    color: Colors.onSurface,
+    fontSize: 12,
+  },
+  dynamicIconStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 4,
+  },
+  dynamicIconBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+  },
+  dynamicIconDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  dynamicIconBadgeText: {
+    ...Typography.labelCaps,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  badgeHealthy: {
+    backgroundColor: 'rgba(212, 255, 50, 0.12)',
+    borderColor: 'rgba(212, 255, 50, 0.35)',
+  },
+  badgeCaution: {
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  badgeCritical: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.40)',
+  },
+  badgeGoal: {
+    backgroundColor: 'rgba(252, 211, 77, 0.15)',
+    borderColor: 'rgba(252, 211, 77, 0.40)',
+  },
+  iconPillActive: {
+    borderColor: Colors.chartreuse,
+    backgroundColor: Colors.chartreuseWash,
+  },
+  iconPillAuto: {
+    borderColor: 'rgba(212, 255, 50, 0.35)',
+    backgroundColor: 'rgba(212, 255, 50, 0.08)',
+  },
 });
+

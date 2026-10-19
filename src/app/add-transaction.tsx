@@ -33,8 +33,13 @@ import { PaymentSourceSelector } from '@/components/transaction/PaymentSourceSel
 import { MoneyFlowConfirmationModal } from '@/components/transaction/MoneyFlowConfirmationModal';
 import { CategoryEntryAtmosphere } from '@/components/transaction/CategoryEntryAtmosphere';
 import { evaluateExpression } from '@/utils/mathEvaluator';
-import { TransactionRepository, MerchantRepository, TemporaryTransactionRepository } from '@/repositories';
-import { AiIntelligenceService } from '@/services';
+import {
+  TransactionRepository,
+  MerchantRepository,
+  TemporaryTransactionRepository,
+  BudgetRepository,
+} from '@/repositories';
+import { AiIntelligenceService, SoundService } from '@/services';
 import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
 import { TransactionType, CategoryType } from '@/db/schema';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
@@ -272,6 +277,9 @@ export default function AddTransactionScreen() {
       useTemporaryTransactionStore.getState().refresh();
       refreshFinancials();
 
+      // A8: Ambient Sound Design trigger
+      SoundService.play('expense');
+
       // Trigger cinematic Money Flow confirmation
       setConfirmedTxData({
         type: 'expense',
@@ -324,6 +332,25 @@ export default function AddTransactionScreen() {
 
     // Reactive store update
     refreshFinancials();
+
+    // A8: Ambient Sound Design trigger
+    if (type === 'income') {
+      SoundService.play('income');
+    } else if (type === 'expense') {
+      const budget = selectedCategoryId ? BudgetRepository.getByCategoryId(selectedCategoryId) : null;
+      if (budget && budget.amount > 0) {
+        const currentSpent = BudgetRepository.getCategorySpent(selectedCategoryId);
+        if (currentSpent < budget.amount && (currentSpent + evaluatedAmount) >= budget.amount * 0.9) {
+          SoundService.play('budget_warning');
+        } else {
+          SoundService.play('expense');
+        }
+      } else {
+        SoundService.play('expense');
+      }
+    } else {
+      SoundService.play('expense');
+    }
 
     // Trigger cinematic Money Flow confirmation
     let srcName = 'Bank Account';

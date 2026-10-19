@@ -50,6 +50,7 @@ import { calculateFinancialHealth } from '@/domain/financialCalculations';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 import { useFinancialStore, useDashboardStore } from '@/stores';
 import { BudgetRepository } from '@/repositories';
+import { SoundService } from '@/services';
 
 export interface HomeScreenProps {
   onNavigateTab?: (index: number) => void;
@@ -59,6 +60,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
   const router = useRouter();
   const {
     userName,
+    themeMode,
     availableToSpend,
     totalBankCashBalance,
     totalAvailableBankCashBalance,
@@ -71,6 +73,10 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     refreshFinancials,
   } = useFinancialStore();
 
+  const isLight = themeMode === 'light' || themeMode === 'mono_light';
+  const isMonoLight = themeMode === 'mono_light';
+  const isMonoDark = themeMode === 'mono_dark';
+
   // Dynamic Financial Health (A3: Emerald-Teal / Amber-Gold / Crimson Breathing)
   const healthInfo = useMemo(() => {
     return calculateFinancialHealth({
@@ -79,6 +85,77 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
       totalBankCashBalance: totalAvailableBankCashBalance ?? totalBankCashBalance,
     });
   }, [availableToSpend, overallBudget, totalAvailableBankCashBalance, totalBankCashBalance]);
+
+  // High-contrast, crystal-clear typography for the dynamic hero card
+  const heroEyebrowColor = isLight
+    ? (isMonoLight
+        ? '#000000'
+        : healthInfo.tier === 'critical'
+        ? '#991B1B'
+        : healthInfo.tier === 'caution'
+        ? '#92400E'
+        : '#065F46')
+    : healthInfo.accentColor;
+
+  const heroBadgeTextColor = isLight
+    ? (isMonoLight
+        ? '#000000'
+        : healthInfo.tier === 'critical'
+        ? '#991B1B'
+        : healthInfo.tier === 'caution'
+        ? '#78350F'
+        : '#065F46')
+    : healthInfo.badgeColor;
+
+  const heroBadgeBgColor = isLight
+    ? (healthInfo.tier === 'critical'
+        ? 'rgba(239, 68, 68, 0.16)'
+        : healthInfo.tier === 'caution'
+        ? 'rgba(245, 158, 11, 0.18)'
+        : 'rgba(16, 185, 129, 0.16)')
+    : healthInfo.badgeBg;
+
+  const heroBadgeBorderColor = isLight
+    ? (healthInfo.tier === 'critical'
+        ? 'rgba(220, 38, 38, 0.45)'
+        : healthInfo.tier === 'caution'
+        ? 'rgba(217, 119, 6, 0.45)'
+        : 'rgba(5, 150, 105, 0.45)')
+    : healthInfo.badgeBorder;
+
+  const heroAmountColor = isLight
+    ? (isMonoLight
+        ? '#000000'
+        : healthInfo.tier === 'critical'
+        ? '#7F1D1D'
+        : healthInfo.tier === 'caution'
+        ? '#78350F'
+        : '#042F2E')
+    : isMonoDark
+    ? '#FFFFFF'
+    : healthInfo.accentColor;
+
+  const heroSubtextColor = isLight
+    ? (isMonoLight ? '#1A1A1A' : '#334155')
+    : Colors.onSurfaceVariant;
+
+  const heroHighlightColor = isLight
+    ? (isMonoLight
+        ? '#000000'
+        : healthInfo.tier === 'critical'
+        ? '#B91C1C'
+        : healthInfo.tier === 'caution'
+        ? '#B45309'
+        : '#047857')
+    : healthInfo.accentColor;
+
+  const heroBorderColor = isLight
+    ? (healthInfo.tier === 'critical'
+        ? 'rgba(239, 68, 68, 0.45)'
+        : healthInfo.tier === 'caution'
+        ? 'rgba(245, 158, 11, 0.45)'
+        : 'rgba(16, 185, 129, 0.40)')
+    : healthInfo.borderColor;
 
   const cards = useDashboardStore((s) => s.cards);
   const isEditMode = useDashboardStore((s) => s.isEditMode);
@@ -103,6 +180,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
   }, [refreshing, monthlyTotals.expense]);
 
   const onRefresh = async () => {
+    SoundService.play('refresh');
     setRefreshing(true);
     refreshFinancials();
     setTimeout(() => setRefreshing(false), 400);
@@ -160,22 +238,23 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           entering={FadeInDown.duration(600).delay(100)}
           style={[
             styles.heroCard,
-            { borderColor: healthInfo.borderColor },
+            { borderColor: heroBorderColor },
+            isLight && { backgroundColor: isMonoLight ? '#FFFFFF' : '#F8FAFC' },
           ]}
         >
           {/* Dynamic Health SVG Gradient (Emerald-Teal / Amber-Gold / Crimson Breathing) */}
-          <DynamicHeroHealthGradient healthTier={healthInfo.tier} />
+          <DynamicHeroHealthGradient healthTier={healthInfo.tier} isLight={isLight} />
 
           {/* Ambient Glow */}
-          <View style={[styles.heroGlow, { backgroundColor: healthInfo.glowColor }]} />
+          <View style={[styles.heroGlow, { backgroundColor: isLight ? 'transparent' : healthInfo.glowColor }]} />
 
           {/* Living Ambient Particle Field */}
-          <AmbientParticleField color={healthInfo.accentColor} />
+          {!isLight && <AmbientParticleField color={healthInfo.accentColor} />}
 
           {/* Living Perimeter Breathing Halo */}
           <HeroBreathingHalo
             isDeficit={healthInfo.tier === 'critical'}
-            haloColor={healthInfo.accentColor}
+            haloColor={isLight ? (healthInfo.tier === 'critical' ? '#EF4444' : healthInfo.tier === 'caution' ? '#F59E0B' : '#10B981') : healthInfo.accentColor}
           />
 
           <View style={styles.heroContent}>
@@ -185,10 +264,10 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 <View
                   style={[
                     styles.pulseDot,
-                    { backgroundColor: healthInfo.accentColor },
+                    { backgroundColor: isLight ? (healthInfo.tier === 'critical' ? '#EF4444' : healthInfo.tier === 'caution' ? '#F59E0B' : '#10B981') : healthInfo.accentColor },
                   ]}
                 />
-                <Text style={[styles.eyebrowLabel, { color: healthInfo.accentColor }]}>
+                <Text style={[styles.eyebrowLabel, { color: heroEyebrowColor, fontWeight: '700' }]}>
                   {availableToSpend < 0 ? 'DEFICIT ALERT' : 'AVAILABLE TO SPEND'}
                 </Text>
 
@@ -196,12 +275,12 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                   style={[
                     styles.healthBadge,
                     {
-                      backgroundColor: healthInfo.badgeBg,
-                      borderColor: healthInfo.badgeBorder,
+                      backgroundColor: heroBadgeBgColor,
+                      borderColor: heroBadgeBorderColor,
                     },
                   ]}
                 >
-                  <Text style={[styles.healthBadgeText, { color: healthInfo.badgeColor }]}>
+                  <Text style={[styles.healthBadgeText, { color: heroBadgeTextColor, fontWeight: '800' }]}>
                     {healthInfo.badgeLabel}
                   </Text>
                 </View>
@@ -209,15 +288,21 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
 
               {/* Navigate to full breakdown screen */}
               <TouchableOpacity
-                style={styles.breakdownToggle}
+                style={[
+                  styles.breakdownToggle,
+                  isLight && {
+                    backgroundColor: '#FFFFFF',
+                    borderColor: 'rgba(0, 0, 0, 0.14)',
+                  },
+                ]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push('/breakdown' as any);
                 }}
                 activeOpacity={0.7}
               >
-                <Info size={14} color={Colors.onSurfaceVariant} />
-                <Text style={styles.breakdownToggleText}>
+                <Info size={14} color={isLight ? '#000000' : Colors.onSurfaceVariant} />
+                <Text style={[styles.breakdownToggleText, isLight && { color: '#000000', fontWeight: '600' }]}>
                   Breakdown →
                 </Text>
               </TouchableOpacity>
@@ -232,15 +317,16 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 prefix="₹"
                 suffix=".00"
                 textStyle={{
-                  color: healthInfo.accentColor,
+                  color: heroAmountColor,
+                  fontWeight: '800',
                 }}
               />
             </View>
 
             {/* Pacing Subtext */}
-            <Text style={styles.heroSubtext}>
+            <Text style={[styles.heroSubtext, { color: heroSubtextColor }]}>
               Safe pace through {endOfMonthLabel} •{' '}
-              <Text style={[styles.heroHighlight, { color: healthInfo.accentColor }]}>
+              <Text style={[styles.heroHighlight, { color: heroHighlightColor, fontWeight: '700' }]}>
                 ₹{dailySpendLimit.toLocaleString('en-IN')}/day limit
               </Text>{' '}
               ({daysRemainingInMonth} days left)
@@ -250,7 +336,13 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
             {showBreakdown && (
               <Animated.View
                 entering={FadeInDown.duration(300)}
-                style={styles.breakdownContainer}
+                style={[
+                  styles.breakdownContainer,
+                  isLight && {
+                    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                    borderTopColor: 'rgba(0, 0, 0, 0.08)',
+                  },
+                ]}
               >
                 <View style={styles.breakdownRow}>
                   <Text style={styles.breakdownLabel}>Bank & Cash (in Total)</Text>
@@ -272,8 +364,8 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
                 </View>
                 <View style={styles.breakdownDivider} />
                 <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownTotalLabel}>Safe-to-Spend Balance</Text>
-                  <Text style={styles.breakdownTotalValue}>
+                  <Text style={[styles.breakdownTotalLabel, isLight && { color: isMonoLight ? '#000000' : Colors.onSurface }]}>Safe-to-Spend Balance</Text>
+                  <Text style={[styles.breakdownTotalValue, isLight && { color: isMonoLight ? '#000000' : Colors.onSurface }]}>
                     = ₹{availableToSpend.toLocaleString('en-IN')}
                   </Text>
                 </View>

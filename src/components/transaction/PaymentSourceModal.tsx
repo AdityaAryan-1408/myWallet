@@ -169,7 +169,7 @@ export function PaymentSourceModal({
                           </Text>
                           {isPrimary && (
                             <View style={styles.primaryBadge}>
-                              <Star size={9} color={Colors.chartreuse} fill={Colors.chartreuse} />
+                              <Star size={9} color={Colors.onPrimary} fill={Colors.onPrimary} />
                               <Text style={styles.primaryBadgeText}>PRIMARY</Text>
                             </View>
                           )}
@@ -372,17 +372,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: `${Colors.chartreuse}1A`,
-    paddingHorizontal: 5,
+    backgroundColor: Colors.primaryFixed,
+    paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: Shapes.pill,
-    borderWidth: 1,
-    borderColor: `${Colors.chartreuse}40`,
   },
   primaryBadgeText: {
     fontFamily: FontFamily.headingBold,
     fontSize: 8.5,
-    color: Colors.chartreuse,
+    color: Colors.onPrimary,
     letterSpacing: 0.5,
   },
   last4Badge: {

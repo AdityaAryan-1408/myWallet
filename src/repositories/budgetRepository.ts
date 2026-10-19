@@ -66,6 +66,23 @@ export const BudgetRepository = {
     );
   },
 
+  getCategorySpent(categoryId: string, yearMonth?: string): number {
+    const db = getDatabase();
+    const ym = yearMonth || getCurrentYearMonth();
+    const row = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total 
+       FROM transactions 
+       WHERE type = 'expense' 
+         AND strftime('%Y-%m', date) = ?
+         AND (
+           category_id = ? 
+           OR subcategory_id IN (SELECT id FROM categories WHERE parent_id = ?)
+         );`,
+      [ym, categoryId, categoryId]
+    );
+    return row?.total ?? 0;
+  },
+
   getAllWithProgress(yearMonth?: string): BudgetWithProgress[] {
     const db = getDatabase();
     const ym = yearMonth || getCurrentYearMonth();

@@ -27,6 +27,7 @@ import { ScreenHeader } from '@/components/navigation/ScreenHeader';
 import { TransactionRow, TransactionDetailModal } from '@/components/activity';
 import { TransactionWithDetails, TransactionRepository } from '@/repositories';
 import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
+import { SoundService } from '@/services';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
 type FilterType = 'ALL' | 'EXPENSES' | 'INCOME' | 'TRANSFERS' | 'ON BEHALF';
@@ -60,6 +61,7 @@ export default function ActivityScreen() {
   }, [loadTransactions, recentTransactions, monthlyTotals, tempPending, tempReturned]);
 
   const onRefresh = async () => {
+    SoundService.play('refresh');
     setRefreshing(true);
     refreshFinancials();
     useTemporaryTransactionStore.getState().refresh();

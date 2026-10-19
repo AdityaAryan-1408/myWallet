@@ -138,6 +138,38 @@ export const SettingsRepository = {
     this.set('ai_copilot_enabled', enabled ? '1' : '0');
   },
 
+  getSoundsEnabled(): boolean {
+    return this.get('ambient_sounds_enabled', '0') === '1';
+  },
+
+  setSoundsEnabled(enabled: boolean): void {
+    this.set('ambient_sounds_enabled', enabled ? '1' : '0');
+  },
+
+  getDynamicIconEnabled(): boolean {
+    return this.get('dynamic_icon_enabled', '1') === '1';
+  },
+
+  setDynamicIconEnabled(enabled: boolean): void {
+    this.set('dynamic_icon_enabled', enabled ? '1' : '0');
+  },
+
+  getLastGoalAchievedTime(): number {
+    return parseInt(this.get('last_goal_achieved_time', '0'), 10) || 0;
+  },
+
+  setLastGoalAchievedTime(timestamp: number): void {
+    this.set('last_goal_achieved_time', timestamp.toString());
+  },
+
+  getActiveIconVariant(): string {
+    return this.get('active_icon_variant', 'healthy');
+  },
+
+  setActiveIconVariant(variant: string): void {
+    this.set('active_icon_variant', variant);
+  },
+
   get(key: string, defaultValue: string = ''): string {
     try {
       const db = getDatabase();

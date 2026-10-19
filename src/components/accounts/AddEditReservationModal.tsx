@@ -36,6 +36,8 @@ import {
 
 import { Reservation } from '@/db/schema';
 import { useFinancialStore } from '@/stores';
+import { SoundService, DynamicIconService } from '@/services';
+import { SettingsRepository } from '@/repositories/settingsRepository';
 import { Colors, Typography, Spacing, Shapes, FontFamily } from '@/theme';
 
 // ─── SVG Progress Ring ─────────────────────────────────────────────
@@ -187,6 +189,12 @@ export function AddEditReservationModal({
         affects_available: affectsAvailable ? 1 : 0,
         is_active: 1,
       });
+    }
+
+    if (targetAmount > 0 && amount >= targetAmount) {
+      SoundService.play('goal');
+      SettingsRepository.setLastGoalAchievedTime(Date.now());
+      DynamicIconService.syncIcon('goal').catch(() => {});
     }
 
     onSuccess?.();

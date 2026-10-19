@@ -75,7 +75,7 @@ export function AccountsSnapshotCard({ onNavigateTab }: AccountsSnapshotCardProp
                   </Text>
                   {isPrimary && (
                     <View style={styles.primaryBadge}>
-                      <Star size={9} color="#000" fill="#000" />
+                      <Star size={9} color={Colors.onPrimary} fill={Colors.onPrimary} />
                       <Text style={styles.primaryBadgeText}>PRIMARY</Text>
                     </View>
                   )}
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: Colors.chartreuse,
+    backgroundColor: Colors.primaryFixed,
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.mono,
     fontSize: 8,
     fontWeight: '800',
-    color: '#000',
+    color: Colors.onPrimary,
     letterSpacing: 0.5,
   },
   excludedBadge: {

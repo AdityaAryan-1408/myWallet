@@ -27,7 +27,7 @@ import {
   BudgetWithProgress,
   OverallBudgetProgress,
 } from '@/repositories';
-import { NotificationService, WidgetService } from '@/services';
+import { NotificationService, WidgetService, DynamicIconService } from '@/services';
 import {
   calculateAvailableToSpend,
   calculateDailyPacing,
@@ -527,6 +527,9 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       // Sync native Android Home Screen Widget in real time (Phase 18)
       const statusText = availableToSpend > 0 ? (dailyLimit >= 300 ? 'HEALTHY' : 'CAUTION') : 'EXCEEDED';
       WidgetService.syncWidget(availableToSpend, dailyLimit, '₹', statusText).catch(() => {});
+
+      // Sync native Android Dynamic Launcher Icon (Feature A9: Financial Health Badge)
+      DynamicIconService.syncIcon().catch(() => {});
 
       set({
         availableToSpend,

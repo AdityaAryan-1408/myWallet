@@ -7,3 +7,5 @@ export { WidgetService } from './widgetService';
 export type { WidgetData } from './widgetService';
 export { AiIntelligenceService } from './aiIntelligenceService';
 export type { AnomalyAuditOutcome, AnomalyOutcomeStatus, CategoryBaselineInfo } from './aiIntelligenceService';
+export { SoundService, type SoundEffect } from './soundService';
+export { DynamicIconService, type AppIconVariant } from './dynamicIconService';
