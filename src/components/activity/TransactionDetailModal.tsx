@@ -40,6 +40,8 @@ import {
 } from 'lucide-react-native';
 
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
+import { CategoryPicker } from '@/components/transaction/CategoryPicker';
+import { CategoryType } from '@/db/schema';
 import { TransactionWithDetails, TransactionRepository, TemporaryTransactionRepository } from '@/repositories';
 import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
@@ -63,6 +65,24 @@ export function TransactionDetailModal({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [editedNote, setEditedNote] = useState('');
 
+  // Full Transaction Edit Mode (Amount, Category, Subcategory, Note)
+  const [isEditing, setIsEditing] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editSubcategoryId, setEditSubcategoryId] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState('');
+
+  React.useEffect(() => {
+    if (transaction) {
+      setEditAmount(String(transaction.amount));
+      setEditCategoryId(transaction.category_id || '');
+      setEditSubcategoryId(transaction.subcategory_id || null);
+      setEditNote(transaction.note || '');
+    }
+    setIsEditing(false);
+    setIsEditingNote(false);
+  }, [transaction?.id]);
+
   if (!transaction) return null;
 
   const isIncome = transaction.type === 'income';
@@ -80,6 +100,59 @@ export function TransactionDetailModal({
     : Colors.onSurface;
 
   const amountSign = isIncome ? '+' : isTransfer ? '⇄ ' : '−';
+
+  const handleClose = () => {
+    setIsEditing(false);
+    setIsEditingNote(false);
+    onClose();
+  };
+
+  const startFullEdit = () => {
+    if (!transaction) return;
+    setEditAmount(String(transaction.amount));
+    setEditCategoryId(transaction.category_id || '');
+    setEditSubcategoryId(transaction.subcategory_id || null);
+    setEditNote(transaction.note || '');
+    setIsEditing(true);
+  };
+
+  const handleSaveFullEdit = () => {
+    if (!transaction) return;
+    const num = parseFloat(editAmount);
+    if (isNaN(num) || num <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+    }
+
+    if (isTemp) {
+      TemporaryTransactionRepository.update(transaction.id, {
+        amount: num,
+        category_id: editCategoryId || null,
+        notes: editNote.trim() || null,
+        title: editNote.trim() || transaction.note || 'Paid on Behalf',
+      });
+      useTemporaryTransactionStore.getState().refresh();
+    } else {
+      const updatedTx = {
+        ...transaction,
+        amount: num,
+        category_id: !isTransfer ? (editCategoryId || null) : null,
+        subcategory_id: !isTransfer ? (editSubcategoryId || null) : null,
+        note: editNote.trim() || (isTransfer ? 'Transfer' : 'Quick Expense'),
+      };
+      TransactionRepository.update(updatedTx);
+    }
+
+    refreshFinancials();
+    setIsEditing(false);
+    onUpdated?.();
+  };
 
   const handleMarkReturned = () => {
     Alert.alert(
@@ -202,13 +275,13 @@ export function TransactionDetailModal({
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
-          onPress={onClose}
+          onPress={handleClose}
         />
 
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
@@ -219,21 +292,39 @@ export function TransactionDetailModal({
           <View style={styles.headerRow}>
             <TouchableOpacity
               style={styles.iconButton}
-              onPress={onClose}
+              onPress={handleClose}
               activeOpacity={0.7}
             >
               <X size={18} color={Colors.onSurface} />
             </TouchableOpacity>
 
-            <Text style={styles.headerTitle}>TRANSACTION DETAILS</Text>
+            <Text style={styles.headerTitle}>
+              {isEditing ? 'EDIT TRANSACTION' : 'TRANSACTION DETAILS'}
+            </Text>
 
-            <TouchableOpacity
-              style={[styles.iconButton, styles.deleteButton]}
-              onPress={handleDelete}
-              activeOpacity={0.7}
-            >
-              <Trash2 size={16} color={Colors.expense} />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[styles.iconButton, isEditing && styles.editButtonActive]}
+                onPress={() => {
+                  if (isEditing) {
+                    setIsEditing(false);
+                  } else {
+                    startFullEdit();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Edit2 size={16} color={isEditing ? Colors.chartreuse : Colors.onSurface} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.iconButton, styles.deleteButton]}
+                onPress={handleDelete}
+                activeOpacity={0.7}
+              >
+                <Trash2 size={16} color={Colors.expense} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView
@@ -241,8 +332,78 @@ export function TransactionDetailModal({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* Big Amount & Type Card */}
-            <View style={styles.amountHero}>
+            {isEditing ? (
+              <View style={styles.editFormCard}>
+                {/* 1. Amount Edit */}
+                <View style={styles.editFieldGroup}>
+                  <Text style={styles.editFieldLabel}>AMOUNT (₹)</Text>
+                  <View style={styles.editAmountInputWrap}>
+                    <Text style={styles.editCurrencyPrefix}>₹</Text>
+                    <TextInput
+                      style={styles.editAmountInput}
+                      value={editAmount}
+                      onChangeText={setEditAmount}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={Colors.onSurfaceVariant}
+                      selectTextOnFocus
+                    />
+                  </View>
+                </View>
+
+                {/* 2. Category & Subcategory Picker (if not transfer) */}
+                {!isTransfer && (
+                  <View style={styles.editFieldGroup}>
+                    <Text style={styles.editFieldLabel}>CATEGORY</Text>
+                    <CategoryPicker
+                      type={isIncome ? 'income' : 'expense'}
+                      selectedCategoryId={editCategoryId}
+                      selectedSubcategoryId={editSubcategoryId}
+                      onSelectCategory={(catId) => {
+                        setEditCategoryId(catId);
+                        setEditSubcategoryId(null);
+                      }}
+                      onSelectSubcategory={setEditSubcategoryId}
+                    />
+                  </View>
+                )}
+
+                {/* 3. Note / Description */}
+                <View style={styles.editFieldGroup}>
+                  <Text style={styles.editFieldLabel}>NOTE / DESCRIPTION</Text>
+                  <TextInput
+                    style={styles.editNoteInput}
+                    value={editNote}
+                    onChangeText={setEditNote}
+                    placeholder="Add note or merchant..."
+                    placeholderTextColor={Colors.onSurfaceVariant}
+                  />
+                </View>
+
+                {/* 4. Action Buttons */}
+                <View style={styles.editActionsRow}>
+                  <TouchableOpacity
+                    style={styles.cancelEditBtn}
+                    onPress={() => setIsEditing(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.cancelEditText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.saveEditBtn}
+                    onPress={handleSaveFullEdit}
+                    activeOpacity={0.8}
+                  >
+                    <Check size={16} color="#000000" strokeWidth={2.5} />
+                    <Text style={styles.saveEditText}>Save Changes</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <>
+                {/* Big Amount & Type Card */}
+                <View style={styles.amountHero}>
               <View
                 style={[
                   styles.typePill,
@@ -471,6 +632,8 @@ export function TransactionDetailModal({
                 {isTemp ? 'Delete Advance Record' : 'Delete Transaction'}
               </Text>
             </TouchableOpacity>
+              </>
+            )}
           </ScrollView>
         </View>
       </View>
@@ -760,6 +923,105 @@ const styles = StyleSheet.create({
     ...Typography.bodyMdMedium,
     color: Colors.expense,
     fontWeight: '700',
+    fontSize: 13,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editButtonActive: {
+    backgroundColor: 'rgba(200, 243, 34, 0.15)',
+    borderWidth: 1,
+    borderColor: Colors.chartreuse,
+  },
+  editFormCard: {
+    backgroundColor: Colors.surfaceContainer,
+    borderRadius: Shapes.xl,
+    padding: Spacing.cardPadding,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  editFieldGroup: {
+    gap: 8,
+  },
+  editFieldLabel: {
+    ...Typography.labelCaps,
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 1,
+    fontSize: 11,
+  },
+  editAmountInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: Shapes.md,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  editCurrencyPrefix: {
+    fontFamily: FontFamily.numericBold,
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.primaryFixed,
+    marginRight: 6,
+  },
+  editAmountInput: {
+    flex: 1,
+    fontFamily: FontFamily.numericBold,
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.onSurface,
+    paddingVertical: 10,
+  },
+  editNoteInput: {
+    ...Typography.bodySm,
+    color: Colors.onSurface,
+    backgroundColor: Colors.surfaceContainerHigh,
+    borderRadius: Shapes.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  editActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  cancelEditBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.strokeMedium,
+  },
+  cancelEditText: {
+    ...Typography.bodyMdMedium,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  saveEditBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.chartreuse,
+  },
+  saveEditText: {
+    ...Typography.bodyMdMedium,
+    color: '#000000',
+    fontWeight: '800',
     fontSize: 13,
   },
 });

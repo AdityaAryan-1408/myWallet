@@ -136,7 +136,53 @@ export const CreditCardRepository = {
     );
   },
 
+  /**
+   * Returns the unpaid billed statement balance as of lastStatementDate.
+   * Total expenses incurred on or before lastStatementDate minus all payments made towards the card.
+   */
+  getUnpaidStatementBalance(cardId: string, lastStatementDate: string): number {
+    const db = getDatabase();
+    const billedExpensesRow = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions 
+       WHERE credit_card_id = ? AND type = 'expense' AND date <= ?;`,
+      [cardId, lastStatementDate]
+    );
+    const totalPaymentsRow = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions 
+       WHERE credit_card_id = ? AND type = 'transfer';`,
+      [cardId]
+    );
+    const billedExpenses = billedExpensesRow?.total ?? 0;
+    const totalPayments = totalPaymentsRow?.total ?? 0;
+
+    return Math.max(0, billedExpenses - totalPayments);
+  },
+
+  /**
+   * Returns the unbilled current cycle spend incurred strictly after lastStatementDate.
+   */
+  getUnbilledSpend(cardId: string, lastStatementDate: string): number {
+    const db = getDatabase();
+    const unbilledRow = db.getFirstSync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions 
+       WHERE credit_card_id = ? AND type = 'expense' AND date > ?;`,
+      [cardId, lastStatementDate]
+    );
+    return unbilledRow?.total ?? 0;
+  },
+
+  /**
+   * Returns true if the last closed statement has been completely paid off
+   * or had zero billed balance to begin with.
+   */
   isLastStatementPaid(cardId: string, lastStatementDate: string): boolean {
+    // 1. If unpaid billed statement balance is 0, the statement is completely satisfied.
+    const unpaidBilled = this.getUnpaidStatementBalance(cardId, lastStatementDate);
+    if (unpaidBilled <= 0) {
+      return true;
+    }
+
+    // 2. Also check if a bill payment was recorded after statement date for resilience
     const db = getDatabase();
     const row = db.getFirstSync<{ count: number }>(
       `SELECT COUNT(*) as count FROM transactions 

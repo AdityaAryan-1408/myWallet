@@ -602,7 +602,13 @@ export const NotificationService = {
 
       // Check if last statement is already paid
       const now = new Date();
-      const statementDate = new Date(now.getFullYear(), now.getMonth(), card.cycle_reset_day);
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const currentDay = now.getDate();
+      const statementDate = currentDay >= card.cycle_reset_day
+        ? new Date(currentYear, currentMonth, card.cycle_reset_day)
+        : new Date(currentYear, currentMonth - 1, card.cycle_reset_day);
+
       const isPaid = CreditCardRepository.isLastStatementPaid(
         card.id,
         statementDate.toISOString().split('T')[0]

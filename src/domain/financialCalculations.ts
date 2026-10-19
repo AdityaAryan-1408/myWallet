@@ -229,31 +229,28 @@ export function calculateCreditCardLifecycle(
     lifecycleStatus = 'UNBILLED';
     statusBadgeText = `All Clear • Resets ${monthNames[nextStatementDate.getMonth()]} ${nextStatementDate.getDate()}`;
     statusColor = '#22C55E';
+  } else if (isStatementPaid) {
+    // The previous closed statement is fully satisfied! Current balance represents unbilled cycle spends.
+    const nextDueMonthOffset = paymentDueDay > cycleResetDay ? 0 : 1;
+    const nextDueDate = new Date(
+      nextStatementDate.getFullYear(),
+      nextStatementDate.getMonth() + nextDueMonthOffset,
+      paymentDueDay,
+      23,
+      59,
+      59
+    );
+    paymentDueDate = nextDueDate;
+    daysUntilDue = Math.max(0, Math.ceil((nextDueDate.getTime() - currentDateTime) / msPerDay));
+    lifecycleStatus = 'UNBILLED';
+    statusBadgeText = `Next Due ${monthNames[nextDueDate.getMonth()]} ${nextDueDate.getDate()} (${daysUntilDue}d)`;
+    statusColor = '#8F937A';
   } else if (diffFromLastDueDays < 0) {
-    // Past the due date of last statement with outstanding > 0
-    if (isStatementPaid) {
-      // User settled the statement bill; current balance represents unbilled cycle spends
-      const nextDueMonthOffset = paymentDueDay > cycleResetDay ? 0 : 1;
-      const nextDueDate = new Date(
-        nextStatementDate.getFullYear(),
-        nextStatementDate.getMonth() + nextDueMonthOffset,
-        paymentDueDay,
-        23,
-        59,
-        59
-      );
-      paymentDueDate = nextDueDate;
-      daysUntilDue = Math.max(0, Math.ceil((nextDueDate.getTime() - currentDateTime) / msPerDay));
-      lifecycleStatus = 'UNBILLED';
-      statusBadgeText = `Next Due ${monthNames[nextDueDate.getMonth()]} ${nextDueDate.getDate()} (${daysUntilDue}d)`;
-      statusColor = '#8F937A';
-    } else {
-      // Overdue bill from previous statement
-      lifecycleStatus = 'OVERDUE';
-      const overdueDays = Math.abs(diffFromLastDueDays);
-      statusBadgeText = `OVERDUE by ${overdueDays}d (${formattedDueDate})`;
-      statusColor = '#EF4444';
-    }
+    // Overdue bill from previous statement that was NOT paid
+    lifecycleStatus = 'OVERDUE';
+    const overdueDays = Math.abs(diffFromLastDueDays);
+    statusBadgeText = `OVERDUE by ${overdueDays}d (${formattedDueDate})`;
+    statusColor = '#EF4444';
   } else if (diffFromLastDueDays === 0) {
     lifecycleStatus = 'DUE_TODAY';
     statusBadgeText = `DUE TODAY (${formattedDueDate})`;
@@ -263,7 +260,7 @@ export function calculateCreditCardLifecycle(
     statusBadgeText = `DUE IN ${diffFromLastDueDays}d (${formattedDueDate})`;
     statusColor = '#F59E0B';
   } else {
-    // In grace period
+    // In grace period for the unpaid closed statement
     lifecycleStatus = 'GRACE_PERIOD';
     statusBadgeText = `Due in ${diffFromLastDueDays}d (${formattedDueDate})`;
     statusColor = '#38BDF8';

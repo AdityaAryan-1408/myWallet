@@ -99,6 +99,15 @@ export default function AddTransactionScreen() {
   const [note, setNote] = useState<string>(() => params.note || '');
   const [isTemporary, setIsTemporary] = useState<boolean>(false);
   const [personName, setPersonName] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  const handleDismiss = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
 
   // A1: Animated "Money Flow" Transaction Confirmation State
   const [showMoneyFlow, setShowMoneyFlow] = useState<boolean>(false);
@@ -116,7 +125,7 @@ export default function AddTransactionScreen() {
 
   const handleFlowComplete = () => {
     setShowMoneyFlow(false);
-    router.back();
+    handleDismiss();
   };
 
   // A5: Category-Specific Transaction Entry Atmosphere Color
@@ -224,7 +233,8 @@ export default function AddTransactionScreen() {
 
   // Save Transaction to SQLite
   const handleSave = () => {
-    if (evaluatedAmount <= 0) return;
+    if (isSaving || evaluatedAmount <= 0) return;
+    setIsSaving(true);
 
     if (Platform.OS !== 'web') {
       try {
@@ -398,7 +408,7 @@ export default function AddTransactionScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.closeButton}
-          onPress={() => router.back()}
+          onPress={handleDismiss}
           activeOpacity={0.7}
         >
           <X size={20} color={Colors.onSurface} />
@@ -652,10 +662,10 @@ export default function AddTransactionScreen() {
           style={[
             styles.saveButton,
             isTemporary && styles.saveButtonTemporary,
-            evaluatedAmount <= 0 && styles.saveButtonDisabled,
+            (evaluatedAmount <= 0 || isSaving) && styles.saveButtonDisabled,
           ]}
           onPress={handleSave}
-          disabled={evaluatedAmount <= 0}
+          disabled={evaluatedAmount <= 0 || isSaving}
           activeOpacity={0.8}
         >
           <Check

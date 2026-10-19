@@ -101,4 +101,26 @@ export const TemporaryTransactionRepository = {
     const db = getDatabase();
     db.runSync('DELETE FROM temporary_transactions WHERE id = ?;', [id]);
   },
+
+  update(id: string, updates: Partial<TemporaryTransaction>): void {
+    const db = getDatabase();
+    const existing = this.getById(id);
+    if (!existing) return;
+    const now = new Date().toISOString();
+    const merged = { ...existing, ...updates, updated_at: now };
+    db.runSync(
+      `UPDATE temporary_transactions SET 
+        title = ?, person_name = ?, amount = ?, category_id = ?, notes = ?, updated_at = ?
+       WHERE id = ?;`,
+      [
+        merged.title,
+        merged.person_name ?? null,
+        merged.amount,
+        merged.category_id ?? null,
+        merged.notes ?? null,
+        now,
+        id,
+      ]
+    );
+  },
 };

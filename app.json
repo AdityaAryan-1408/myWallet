@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyWallet",
     "slug": "MyWallet",
-    "version": "3.0.2",
+    "version": "3.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mywallet",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.aditya.mywallet",
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "backgroundColor": "#101319",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
