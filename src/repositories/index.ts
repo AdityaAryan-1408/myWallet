@@ -65,5 +65,7 @@ export type {
   VelocityRadar,
 } from './aiRepository';
 export { TemporaryTransactionRepository } from './temporaryTransactionRepository';
+export { DailyJournalRepository } from './dailyJournalRepository';
+export { SmsStagingRepository } from './smsStagingRepository';
 
 

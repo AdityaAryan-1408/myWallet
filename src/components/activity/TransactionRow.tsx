@@ -13,6 +13,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
 import { TransactionWithDetails } from '@/repositories';
+import { MoneyMemoryService } from '@/services';
 import { Colors, Typography, Spacing, Shapes, FontFamily } from '@/theme';
 
 export interface TransactionRowProps {
@@ -74,6 +75,8 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
     ? 'PAID ON BEHALF'
     : (transaction.subcategory_name || transaction.category_name || (isTransfer ? 'Transfer' : 'General'));
 
+  const timeContext = MoneyMemoryService.getTimeOfDayContext(transaction.time, transaction.date);
+
   return (
     <TouchableOpacity
       style={[styles.row, isLast && styles.noBorder]}
@@ -103,7 +106,7 @@ export function TransactionRow({ transaction, onPress, isLast = false }: Transac
         </View>
 
         <Text style={styles.subtitle} numberOfLines={1}>
-          {sourceText} {timeStr ? `• ${timeStr}` : ''}
+          {sourceText} • {timeContext.formatted}
         </Text>
       </View>
 

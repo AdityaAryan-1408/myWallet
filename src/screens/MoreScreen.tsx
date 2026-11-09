@@ -6,7 +6,7 @@
  * even upload to drive in case I need to change my phone."
  */
 
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -23,10 +23,17 @@ import {
   Info,
   Sparkles,
   PieChart,
+  Flame,
+  ClipboardCheck,
+  MessageSquare,
 } from 'lucide-react-native';
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
+import { MilestonesModal } from '@/components/milestones';
+import { PocketAuditModal } from '@/components/audit';
+import { SmsParserModal } from '@/components/sms';
 import { useFinancialStore } from '@/stores';
-import { AnalyticsRepository } from '@/repositories';
+import { AnalyticsRepository, TransactionRepository, SmsStagingRepository } from '@/repositories';
+import { StreaksService } from '@/services';
 import { Colors, Typography, Spacing, Shapes, Elevation } from '@/theme';
 
 interface GridItem {
@@ -94,6 +101,30 @@ const GRID_ITEMS: GridItem[] = [
     badge: 'ONLINE',
   },
   {
+    id: 'milestones',
+    title: 'Streaks & Badges',
+    description: 'Gamified consistency',
+    icon: Flame,
+    accentColor: '#FF6B00',
+    badge: 'Milestones',
+  },
+  {
+    id: 'pocketAudit',
+    title: 'Pocket Audit',
+    description: '60-sec swipe review',
+    icon: ClipboardCheck,
+    accentColor: Colors.primaryFixed,
+    badge: 'Daily Review',
+  },
+  {
+    id: 'smsParser',
+    title: 'Smart SMS Parser',
+    description: 'SBI, IND, Slice & Cards',
+    icon: MessageSquare,
+    accentColor: '#38BDF8',
+    badge: 'Auto Staging',
+  },
+  {
     id: 'settings',
     title: 'Preferences',
     description: 'Currency, cycle reset',
@@ -104,7 +135,7 @@ const GRID_ITEMS: GridItem[] = [
 
 export default function MoreScreen() {
   const router = useRouter();
-  const { accounts, reservations, totalReservedMoney, categories, debtSummary, budgets } = useFinancialStore();
+  const { accounts, reservations, totalReservedMoney, categories, debtSummary, budgets, unreviewedTransactionsCount, refreshFinancials } = useFinancialStore();
 
   const activeAccountsCount = accounts.filter((a) => a.is_active === 1).length;
   const activeReservationsCount = reservations.filter((r) => r.is_active === 1).length;
@@ -115,6 +146,28 @@ export default function MoreScreen() {
       return AnalyticsRepository.getFinancialResilienceScore().score;
     } catch {
       return 85;
+    }
+  }, []);
+
+  const [milestonesVisible, setMilestonesVisible] = useState(false);
+  const [auditVisible, setAuditVisible] = useState(false);
+  const [smsModalVisible, setSmsModalVisible] = useState(false);
+
+  const pendingSmsCount = useMemo(() => {
+    try {
+      return SmsStagingRepository.getPendingCount();
+    } catch {
+      return 0;
+    }
+  }, []);
+
+  const unreviewedCount = unreviewedTransactionsCount;
+
+  const streakSummary = useMemo(() => {
+    try {
+      return StreaksService.getStreaksSummary();
+    } catch {
+      return null;
     }
   }, []);
 
@@ -131,6 +184,12 @@ export default function MoreScreen() {
       router.push('/debts' as any);
     } else if (id === 'analytics') {
       router.push('/analytics' as any);
+    } else if (id === 'milestones') {
+      setMilestonesVisible(true);
+    } else if (id === 'pocketAudit') {
+      setAuditVisible(true);
+    } else if (id === 'smsParser') {
+      setSmsModalVisible(true);
     } else if (id === 'backup') {
       router.push({ pathname: '/settings' as any, params: { section: 'backup' } });
     } else if (id === 'intelligence') {
@@ -196,7 +255,13 @@ export default function MoreScreen() {
                       ? `${debtSummary?.pending_count ?? 0} Pending`
                       : item.id === 'analytics'
                         ? `${resilienceScore}/100 Score`
-                        : item.badge;
+                        : item.id === 'milestones'
+                          ? (streakSummary ? `${streakSummary.currentStreakDays}d Streak` : 'Streaks')
+                          : item.id === 'pocketAudit'
+                            ? (unreviewedCount > 0 ? `${unreviewedCount} Pending` : 'Verified ✓')
+                            : item.id === 'smsParser'
+                              ? (pendingSmsCount > 0 ? `${pendingSmsCount} Staged` : 'Active')
+                              : item.badge;
 
             return (
               <Animated.View
@@ -248,6 +313,27 @@ export default function MoreScreen() {
           </Text>
         </Animated.View>
       </ScrollView>
+
+      {/* Feature B6: Milestones & Gamification Modal */}
+      <MilestonesModal
+        visible={milestonesVisible}
+        onClose={() => setMilestonesVisible(false)}
+      />
+
+      {/* Feature B7: Pocket Audit Modal */}
+      <PocketAuditModal
+        visible={auditVisible}
+        onClose={() => {
+          setAuditVisible(false);
+          refreshFinancials();
+        }}
+      />
+
+      {/* Smart SMS Parser Modal */}
+      <SmsParserModal
+        visible={smsModalVisible}
+        onClose={() => setSmsModalVisible(false)}
+      />
     </View>
   );
 }

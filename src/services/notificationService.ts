@@ -54,7 +54,8 @@ if (Platform.OS !== 'web') {
       const getNotificationChannelsAsync = require('expo-notifications/build/getNotificationChannelsAsync').getNotificationChannelsAsync;
       const getNotificationChannelAsync = require('expo-notifications/build/getNotificationChannelAsync').getNotificationChannelAsync;
       const { setNotificationHandler } = require('expo-notifications/build/NotificationsHandler');
-      const { addNotificationReceivedListener } = require('expo-notifications/build/NotificationsEmitter');
+      const { addNotificationReceivedListener, addNotificationResponseReceivedListener, getLastNotificationResponseAsync } = require('expo-notifications/build/NotificationsEmitter');
+      const { dismissNotificationAsync } = require('expo-notifications/build/dismissNotificationAsync');
       const { requestPermissionsAsync, getPermissionsAsync } = require('expo-notifications/build/NotificationPermissions');
       const { AndroidImportance } = require('expo-notifications/build/NotificationChannelManager.types');
       const { SchedulableTriggerInputTypes } = require('expo-notifications/build/Notifications.types');
@@ -69,6 +70,9 @@ if (Platform.OS !== 'web') {
         getNotificationChannelAsync,
         setNotificationHandler,
         addNotificationReceivedListener,
+        addNotificationResponseReceivedListener,
+        getLastNotificationResponseAsync,
+        dismissNotificationAsync,
         requestPermissionsAsync,
         getPermissionsAsync,
         AndroidImportance,
@@ -899,6 +903,70 @@ export const NotificationService = {
       return await Notifications.getPermissionsAsync();
     } catch {
       return null;
+    }
+  },
+
+  /**
+   * Dismisses a single notification by identifier, preserving other notifications in the tray.
+   */
+  async dismissNotification(identifier: string): Promise<void> {
+    if (!Notifications?.dismissNotificationAsync) return;
+    try {
+      await Notifications.dismissNotificationAsync(identifier);
+    } catch (e) {
+      console.warn('Failed to dismiss notification:', e);
+    }
+  },
+
+  /**
+   * Adds an OS notification response listener (tapped notification).
+   */
+  addResponseListener(listener: (response: any) => void): { remove: () => void } | null {
+    if (!Notifications?.addNotificationResponseReceivedListener) return null;
+    try {
+      return Notifications.addNotificationResponseReceivedListener(listener);
+    } catch (e) {
+      console.warn('Failed to add notification response listener:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Retrieves the notification response that launched the app on cold start.
+   */
+  async getLastResponse(): Promise<any> {
+    if (!Notifications?.getLastNotificationResponseAsync) return null;
+    try {
+      return await Notifications.getLastNotificationResponseAsync();
+    } catch (e) {
+      console.warn('Failed to get last notification response:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Schedules an immediate custom push notification with an explicit identifier.
+   */
+  async scheduleCustomNotification(options: {
+    identifier: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
+    if (!Notifications?.scheduleNotificationAsync) return;
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: options.identifier,
+        content: {
+          title: options.title,
+          body: options.body,
+          sound: 'default',
+          data: options.data,
+        },
+        trigger: null,
+      });
+    } catch (e) {
+      console.warn('Failed to schedule custom notification:', e);
     }
   },
 };

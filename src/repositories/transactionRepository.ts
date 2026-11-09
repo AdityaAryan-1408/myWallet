@@ -7,6 +7,7 @@
 import { getDatabase } from '@/db/client';
 import { Transaction } from '@/db/schema';
 import { AiIntelligenceService } from '@/services/aiIntelligenceService';
+import { VelocityAlertService } from '@/services/velocityAlertService';
 
 export interface MonthlyTotals {
   income: number;
@@ -92,6 +93,15 @@ export const TransactionRepository = {
       return row?.count ?? 0;
     } catch {
       return 0;
+    }
+  },
+
+  getById(id: string): Transaction | null {
+    try {
+      const db = getDatabase();
+      return db.getFirstSync<Transaction>('SELECT * FROM transactions WHERE id = ?;', [id]) ?? null;
+    } catch {
+      return null;
     }
   },
 
@@ -235,8 +245,8 @@ export const TransactionRepository = {
     }
 
     db.runSync(
-      `INSERT INTO transactions (id, type, amount, account_id, dest_account_id, credit_card_id, category_id, subcategory_id, date, time, note, expression, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO transactions (id, type, amount, account_id, dest_account_id, credit_card_id, category_id, subcategory_id, date, time, note, expression, is_reviewed, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         tx.id,
         tx.type,
@@ -250,6 +260,7 @@ export const TransactionRepository = {
         tx.time,
         tx.note ?? null,
         tx.expression ?? null,
+        tx.is_reviewed ?? 0,
         now,
         now,
       ]
@@ -293,8 +304,12 @@ export const TransactionRepository = {
       AiIntelligenceService.auditTransaction(fullTx).catch((err: unknown) => {
         console.warn('Central anomaly audit failed:', err);
       });
+      // Feature B2: Real-time Spending Velocity Monitor
+      VelocityAlertService.auditVelocity(fullTx).catch((err: unknown) => {
+        console.warn('Velocity audit failed:', err);
+      });
     } catch (e) {
-      console.warn('Error launching anomaly audit:', e);
+      console.warn('Error launching anomaly or velocity audit:', e);
     }
   },
 
@@ -487,6 +502,100 @@ export const TransactionRepository = {
       time: updatedTx.time,
       note: updatedTx.note,
       expression: updatedTx.expression,
+      is_reviewed: updatedTx.is_reviewed ?? 1,
     });
   },
+
+  /**
+   * Feature B7: Pocket Audit — Fetch all unreviewed transactions
+   */
+  getUnreviewed(limit: number = 100): TransactionWithDetails[] {
+    const db = getDatabase();
+    try {
+      const rows = db.getAllSync<TransactionWithDetails>(
+        `SELECT 
+          t.*,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon,
+          sc.name as subcategory_name,
+          a.name as account_name,
+          da.name as dest_account_name,
+          cc.name as credit_card_name
+        FROM transactions t
+        LEFT JOIN categories c ON t.category_id = c.id
+        LEFT JOIN categories sc ON t.subcategory_id = sc.id
+        LEFT JOIN accounts a ON t.account_id = a.id
+        LEFT JOIN accounts da ON t.dest_account_id = da.id
+        LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
+        WHERE COALESCE(t.is_reviewed, 0) = 0
+        ORDER BY t.date DESC, t.time DESC, t.created_at DESC
+        LIMIT ?;`,
+        [limit]
+      );
+      return rows;
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Count unreviewed transactions for badges and prompts
+   */
+  getUnreviewedCount(): number {
+    const db = getDatabase();
+    try {
+      const row = db.getFirstSync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM transactions WHERE COALESCE(is_reviewed, 0) = 0;`
+      );
+      return row?.count ?? 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Mark a single transaction as verified/reviewed
+   */
+  markReviewed(id: string): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    try {
+      db.runSync('UPDATE transactions SET is_reviewed = 1, updated_at = ? WHERE id = ?;', [now, id]);
+    } catch (e) {
+      console.warn('Failed to mark transaction as reviewed:', e);
+    }
+  },
+
+  /**
+   * Mark all unreviewed transactions in the database as verified/reviewed
+   */
+  markAllAsReviewed(): void {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    try {
+      db.runSync('UPDATE transactions SET is_reviewed = 1, updated_at = ? WHERE COALESCE(is_reviewed, 0) = 0;', [now]);
+    } catch (e) {
+      console.warn('Failed to mark all transactions as reviewed:', e);
+    }
+  },
+
+  /**
+   * Mark a batch of transactions as verified/reviewed
+   */
+  markAllReviewed(ids: string[]): void {
+    if (!ids.length) return;
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    try {
+      const placeholders = ids.map(() => '?').join(',');
+      db.runSync(`UPDATE transactions SET is_reviewed = 1, updated_at = ? WHERE id IN (${placeholders});`, [
+        now,
+        ...ids,
+      ]);
+    } catch (e) {
+      console.warn('Failed to mark all transactions as reviewed:', e);
+    }
+  },
 };
+

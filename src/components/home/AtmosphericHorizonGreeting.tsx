@@ -23,9 +23,11 @@ import Animated, {
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { Sun, Sunset, Moon, Sparkles } from 'lucide-react-native';
 import { Colors, Typography, FontFamily, Spacing, Shapes } from '@/theme';
+import { StreakFlameBadge } from './StreakFlameBadge';
 
 interface AtmosphericHorizonGreetingProps {
   userName: string;
+  onPressStreak?: () => void;
 }
 
 type HorizonPhase = 'morning' | 'afternoon' | 'evening' | 'night';
@@ -162,7 +164,7 @@ function TwinklingStar({
   );
 }
 
-export function AtmosphericHorizonGreeting({ userName }: AtmosphericHorizonGreetingProps) {
+export function AtmosphericHorizonGreeting({ userName, onPressStreak }: AtmosphericHorizonGreetingProps) {
   const config = useMemo(() => getHorizonConfig(userName), [userName]);
   const IconComponent = config.icon;
 
@@ -222,6 +224,10 @@ export function AtmosphericHorizonGreeting({ userName }: AtmosphericHorizonGreet
           {/* Contextual subtitle */}
           <Text style={styles.greetingSubtitle}>{config.subtitle}</Text>
         </View>
+
+        {onPressStreak && (
+          <StreakFlameBadge onPress={onPressStreak} />
+        )}
       </View>
     </Animated.View>
   );

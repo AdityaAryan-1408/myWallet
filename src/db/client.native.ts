@@ -18,6 +18,8 @@ import {
   CREATE_BUDGETS_TABLE,
   CREATE_IN_APP_NOTIFICATIONS_TABLE,
   CREATE_TEMPORARY_TRANSACTIONS_TABLE,
+  CREATE_DAILY_JOURNALS_TABLE,
+  CREATE_SMS_STAGED_TRANSACTIONS_TABLE,
   CREATE_INDEXES,
 } from './schema';
 import { SEED_DATA } from './seed';
@@ -68,13 +70,44 @@ export function initDatabase(): void {
     db.execSync(CREATE_BUDGETS_TABLE);
     db.execSync(CREATE_IN_APP_NOTIFICATIONS_TABLE);
     db.execSync(CREATE_TEMPORARY_TRANSACTIONS_TABLE);
-    db.execSync(CREATE_INDEXES);
+    db.execSync(CREATE_DAILY_JOURNALS_TABLE);
+    db.execSync(CREATE_SMS_STAGED_TRANSACTIONS_TABLE);
 
-    // Migration: ensure temporary_transactions table exists on updated app
+    // Migrations: ensure new tables exist on updated app
     try {
       db.execSync(CREATE_TEMPORARY_TRANSACTIONS_TABLE);
     } catch {
       // Table already exists
+    }
+    try {
+      db.execSync(CREATE_DAILY_JOURNALS_TABLE);
+    } catch {
+      // Table already exists
+    }
+    try {
+      db.execSync(CREATE_SMS_STAGED_TRANSACTIONS_TABLE);
+    } catch {
+      // Table already exists
+    }
+
+    // Migration: ensure is_reviewed column exists on transactions (Feature B7: Pocket Audit)
+    // MUST RUN BEFORE CREATE_INDEXES!
+    try {
+      db.execSync('ALTER TABLE transactions ADD COLUMN is_reviewed INTEGER DEFAULT 0;');
+    } catch {
+      // Column already exists
+    }
+    try {
+      db.execSync('UPDATE transactions SET is_reviewed = 0 WHERE is_reviewed IS NULL;');
+    } catch {
+      // Ignore
+    }
+
+    // Indexes: executed AFTER all tables and columns are guaranteed to exist
+    try {
+      db.execSync(CREATE_INDEXES);
+    } catch (indexErr) {
+      console.warn('Index creation warning:', indexErr);
     }
 
     // Migration: ensure exclude_from_total column exists on accounts

@@ -21,4 +21,7 @@ export {
 } from './DashboardCardRegistry';
 export { AtmosphericHorizonGreeting } from './AtmosphericHorizonGreeting';
 export { DynamicHeroHealthGradient } from './DynamicHeroHealthGradient';
+export { VelocityAlertToast } from './VelocityAlertToast';
+export { StreakFlameBadge } from './StreakFlameBadge';
+export { PocketAuditBanner } from './PocketAuditBanner';
 export * from './AnalyticsCardAdapters';

@@ -73,6 +73,22 @@ export interface Transaction {
   person_name?: string | null;
   is_returned?: number;
   returned_date?: string | null;
+  is_reviewed?: number; // 0 = unreviewed (for Pocket Audit), 1 = reviewed
+}
+
+export interface SmsStagedTransaction {
+  id: string;
+  sender: string;
+  raw_body: string;
+  amount: number;
+  type: 'expense' | 'income';
+  account_id?: string | null;
+  credit_card_id?: string | null;
+  category_id?: string | null;
+  merchant_name?: string | null;
+  notification_id: string;
+  status: 'pending' | 'converted' | 'dismissed';
+  received_at: string;
 }
 
 export interface Reservation {
@@ -112,6 +128,7 @@ export type NotificationType =
   | 'cc_due_soon'
   | 'cc_overdue'
   | 'cc_daily_reminder'
+  | 'velocity_alert'
   | 'system';
 
 export interface InAppNotification {
@@ -119,7 +136,7 @@ export interface InAppNotification {
   type: NotificationType;
   title: string;
   body: string;
-  entity_type?: 'debt' | 'credit_card' | 'system' | null;
+  entity_type?: 'debt' | 'credit_card' | 'velocity' | 'system' | null;
   entity_id?: string | null;
   is_read: number;       // 0 or 1
   is_dismissed: number;  // 0 or 1
@@ -143,6 +160,15 @@ export interface DashboardNote {
   content: string;
   voice_uri?: string | null;
   is_minimized: number; // 0 or 1
+  updated_at: string;
+}
+
+export interface DailyJournal {
+  date: string; // 'YYYY-MM-DD'
+  note: string;
+  emoji?: string | null;
+  tag?: string | null;
+  created_at: string;
   updated_at: string;
 }
 
@@ -244,6 +270,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   time TEXT NOT NULL,
   note TEXT,
   expression TEXT,
+  is_reviewed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -359,6 +386,34 @@ CREATE TABLE IF NOT EXISTS temporary_transactions (
 );
 `;
 
+export const CREATE_DAILY_JOURNALS_TABLE = `
+CREATE TABLE IF NOT EXISTS daily_journals (
+  date TEXT PRIMARY KEY,
+  note TEXT NOT NULL,
+  emoji TEXT,
+  tag TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+export const CREATE_SMS_STAGED_TRANSACTIONS_TABLE = `
+CREATE TABLE IF NOT EXISTS sms_staged_transactions (
+  id TEXT PRIMARY KEY,
+  sender TEXT NOT NULL,
+  raw_body TEXT NOT NULL,
+  amount REAL NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('expense', 'income')),
+  account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  credit_card_id TEXT REFERENCES credit_cards(id) ON DELETE SET NULL,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  merchant_name TEXT,
+  notification_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'converted', 'dismissed')),
+  received_at TEXT NOT NULL
+);
+`;
+
 export const CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -370,4 +425,6 @@ CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id);
 CREATE INDEX IF NOT EXISTS idx_debt_repayments_debt ON debt_repayments(debt_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON in_app_notifications(is_read, is_dismissed);
 CREATE INDEX IF NOT EXISTS idx_temp_tx_returned ON temporary_transactions(is_returned, date DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_reviewed ON transactions(is_reviewed, date DESC);
+CREATE INDEX IF NOT EXISTS idx_sms_staged_status ON sms_staged_transactions(status, received_at DESC);
 `;

@@ -45,7 +45,13 @@ import {
   DashboardCardPicker,
   AtmosphericHorizonGreeting,
   DynamicHeroHealthGradient,
+  VelocityAlertToast,
+  PocketAuditBanner,
 } from '@/components/home';
+import { MilestonesModal } from '@/components/milestones';
+import { PocketAuditModal } from '@/components/audit';
+import { TransactionRepository } from '@/repositories';
+
 import { calculateFinancialHealth } from '@/domain/financialCalculations';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 import { useFinancialStore, useDashboardStore } from '@/stores';
@@ -70,7 +76,10 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     daysRemainingInMonth,
     monthlyTotals,
     overallBudget,
+    activeVelocityAlert,
+    dismissVelocityAlert,
     refreshFinancials,
+    unreviewedTransactionsCount,
   } = useFinancialStore();
 
   const isLight = themeMode === 'light' || themeMode === 'mono_light';
@@ -168,6 +177,10 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
+  const [milestonesVisible, setMilestonesVisible] = useState(false);
+  const [auditVisible, setAuditVisible] = useState(false);
+
+  const unreviewedCount = unreviewedTransactionsCount;
 
   // Load layout on initial mount
   useEffect(() => {
@@ -230,8 +243,23 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
           />
         }
       >
-        {/* ─── Atmospheric Time-of-Day Horizon (Upgrade 4.3) ─── */}
-        <AtmosphericHorizonGreeting userName={userName} />
+        {/* ─── Atmospheric Time-of-Day Horizon (Upgrade 4.3 + Streak Flame B6) ─── */}
+        <AtmosphericHorizonGreeting
+          userName={userName}
+          onPressStreak={() => setMilestonesVisible(true)}
+        />
+
+        {/* ─── Feature B2: Spending Velocity Alert Toast (Dismissible Popup) ─── */}
+        <VelocityAlertToast
+          alert={activeVelocityAlert}
+          onDismiss={dismissVelocityAlert}
+        />
+
+        {/* ─── Feature B7: Pocket Audit Banner (60s Daily Review) ─── */}
+        <PocketAuditBanner
+          unreviewedCount={unreviewedCount}
+          onPress={() => setAuditVisible(true)}
+        />
 
         {/* ─── Hero Card: Safe-to-Spend with Dynamic Health Gradients (A3) ─── */}
         <Animated.View
@@ -469,6 +497,21 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
       <ProfileNameModal
         visible={profileVisible}
         onClose={() => setProfileVisible(false)}
+      />
+
+      {/* ─── Feature B6: Milestones & Gamification Modal ─── */}
+      <MilestonesModal
+        visible={milestonesVisible}
+        onClose={() => setMilestonesVisible(false)}
+      />
+
+      {/* ─── Feature B7: Pocket Audit Modal ─── */}
+      <PocketAuditModal
+        visible={auditVisible}
+        onClose={() => {
+          setAuditVisible(false);
+          refreshFinancials();
+        }}
       />
     </View>
   );

@@ -32,6 +32,7 @@ import {
   Calendar,
   ArrowRight,
   ShieldAlert,
+  Flame,
 } from 'lucide-react-native';
 
 import { InAppNotification } from '@/db/schema';
@@ -110,6 +111,8 @@ export function NotificationCenterModal({
         return <Calendar size={18} color={Colors.primaryFixed} />;
       case 'cc_daily_reminder':
         return <CreditCardIcon size={18} color="#38BDF8" />;
+      case 'velocity_alert':
+        return <Flame size={18} color="#F59E0B" />;
       default:
         return <Bell size={18} color={Colors.primaryFixed} />;
     }
@@ -127,6 +130,8 @@ export function NotificationCenterModal({
         return Colors.primaryFixed;
       case 'cc_daily_reminder':
         return '#38BDF8';
+      case 'velocity_alert':
+        return '#F59E0B';
       default:
         return Colors.primaryFixed;
     }

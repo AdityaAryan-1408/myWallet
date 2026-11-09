@@ -21,22 +21,35 @@ import {
   RefreshControl,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Search, X, Receipt, Filter } from 'lucide-react-native';
+import { Search, X, Receipt, Filter, Plus, BookOpen } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/navigation/ScreenHeader';
-import { TransactionRow, TransactionDetailModal } from '@/components/activity';
-import { TransactionWithDetails, TransactionRepository } from '@/repositories';
+import {
+  TransactionRow,
+  TransactionDetailModal,
+  DailyJournalModal,
+  DailyJournalBanner,
+  MomentClusterCard,
+} from '@/components/activity';
+import {
+  TransactionWithDetails,
+  TransactionRepository,
+  DailyJournalRepository,
+} from '@/repositories';
+import { DailyJournal } from '@/db/schema';
 import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
-import { SoundService } from '@/services';
+import { SoundService, MoneyMemoryService, FinancialMoment } from '@/services';
 import { Colors, Typography, Spacing, Shapes, Elevation, FontFamily } from '@/theme';
 
-type FilterType = 'ALL' | 'EXPENSES' | 'INCOME' | 'TRANSFERS' | 'ON BEHALF';
+type FilterType = 'ALL' | 'EXPENSES' | 'INCOME' | 'TRANSFERS' | 'ON BEHALF' | '📖 MEMORY';
 
 interface DateGroup {
   date: string;
   displayDate: string;
   netAmount: number;
   transactions: TransactionWithDetails[];
+  journal?: DailyJournal | null;
+  moments: FinancialMoment[];
 }
 
 export default function ActivityScreen() {
@@ -45,27 +58,32 @@ export default function ActivityScreen() {
   const tempReturned = useTemporaryTransactionStore((s) => s.returned);
 
   const [transactions, setTransactions] = useState<TransactionWithDetails[]>([]);
+  const [journals, setJournals] = useState<Record<string, DailyJournal>>({});
+  const [journalModalVisible, setJournalModalVisible] = useState(false);
+  const [selectedJournalDate, setSelectedJournalDate] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTx, setSelectedTx] = useState<TransactionWithDetails | null>(null);
 
-  // Load transactions from local SQLite database
-  const loadTransactions = useCallback(() => {
+  // Load transactions and daily journals from local SQLite database
+  const loadData = useCallback(() => {
     const list = TransactionRepository.getAllWithDetails();
     setTransactions(list);
+    const jMap = DailyJournalRepository.getAll();
+    setJournals(jMap);
   }, []);
 
   useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions, recentTransactions, monthlyTotals, tempPending, tempReturned]);
+    loadData();
+  }, [loadData, recentTransactions, monthlyTotals, tempPending, tempReturned]);
 
   const onRefresh = async () => {
     SoundService.play('refresh');
     setRefreshing(true);
     refreshFinancials();
     useTemporaryTransactionStore.getState().refresh();
-    loadTransactions();
+    loadData();
     setTimeout(() => setRefreshing(false), 400);
   };
 
@@ -103,7 +121,7 @@ export default function ActivityScreen() {
     });
   }, [transactions, activeFilter, searchQuery]);
 
-  // Group filtered transactions by date
+  // Group filtered transactions by date and attach Money Memory moments + journals
   const groupedTransactions = useMemo<DateGroup[]>(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -122,9 +140,21 @@ export default function ActivityScreen() {
       groupsMap.get(dateKey)!.push(tx);
     }
 
+    // When under MEMORY filter or ALL, ensure any date with a journal entry is included
+    if (activeFilter === '📖 MEMORY' || activeFilter === 'ALL') {
+      for (const jDate of Object.keys(journals)) {
+        if (!groupsMap.has(jDate)) {
+          groupsMap.set(jDate, []);
+        }
+      }
+    }
+
+    const sortedDates = Array.from(groupsMap.keys()).sort((a, b) => b.localeCompare(a));
     const result: DateGroup[] = [];
 
-    groupsMap.forEach((txList, dateKey) => {
+    for (const dateKey of sortedDates) {
+      const txList = groupsMap.get(dateKey) || [];
+
       // Calculate daily net (excluding temporary advances so bank balance net is pure)
       let net = 0;
       for (const tx of txList) {
@@ -159,16 +189,26 @@ export default function ActivityScreen() {
         displayDate = dateKey;
       }
 
+      const moments = MoneyMemoryService.detectMomentsForDate(dateKey, txList);
+      const journal = journals[dateKey] || null;
+
+      // In MEMORY filter, only show days that have a story (journal) or moments
+      if (activeFilter === '📖 MEMORY' && !journal && moments.length === 0) {
+        continue;
+      }
+
       result.push({
         date: dateKey,
         displayDate,
         netAmount: net,
         transactions: txList,
+        journal,
+        moments,
       });
-    });
+    }
 
     return result;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, journals, activeFilter]);
 
   // Count of transactions logged this month
   const monthlyLogsCount = useMemo(() => {
@@ -223,7 +263,7 @@ export default function ActivityScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterRow}
           >
-            {(['ALL', 'EXPENSES', 'INCOME', 'TRANSFERS', 'ON BEHALF'] as FilterType[]).map((filter) => {
+            {(['ALL', 'EXPENSES', 'INCOME', 'TRANSFERS', 'ON BEHALF', '📖 MEMORY'] as FilterType[]).map((filter) => {
               const isActive = activeFilter === filter;
               return (
                 <TouchableOpacity
@@ -257,7 +297,7 @@ export default function ActivityScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── Date Groups Ledger ─── */}
+        {/* ─── Date Groups Ledger & Money Memory Timeline ─── */}
         {groupedTransactions.length > 0 ? (
           groupedTransactions.map((group, groupIdx) => {
             const isNetPositive = group.netAmount > 0;
@@ -278,7 +318,23 @@ export default function ActivityScreen() {
               >
                 {/* Date Group Header */}
                 <View style={styles.dateHeader}>
-                  <Text style={styles.dateLabel}>{group.displayDate}</Text>
+                  <View style={styles.dateLabelRow}>
+                    <Text style={styles.dateLabel}>{group.displayDate}</Text>
+                    <TouchableOpacity
+                      style={[styles.addStoryBtn, group.journal && styles.addStoryBtnActive]}
+                      onPress={() => {
+                        setSelectedJournalDate(group.date);
+                        setJournalModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Plus size={10} color={group.journal ? '#000000' : Colors.chartreuse} />
+                      <Text style={[styles.addStoryBtnText, group.journal && styles.addStoryBtnTextActive]}>
+                        {group.journal ? 'Story' : '+ Note'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
                   <Text
                     style={[
                       styles.dateNet,
@@ -290,17 +346,35 @@ export default function ActivityScreen() {
                   </Text>
                 </View>
 
+                {/* Money Memory: Daily Context Journal Story */}
+                {group.journal && (
+                  <DailyJournalBanner
+                    journal={group.journal}
+                    onPress={() => {
+                      setSelectedJournalDate(group.date);
+                      setJournalModalVisible(true);
+                    }}
+                  />
+                )}
+
+                {/* Money Memory: Automated Moment Clusters */}
+                {group.moments.map((moment) => (
+                  <MomentClusterCard key={moment.id} moment={moment} />
+                ))}
+
                 {/* Transactions Card */}
-                <View style={styles.txCard}>
-                  {group.transactions.map((tx, idx) => (
-                    <TransactionRow
-                      key={tx.id}
-                      transaction={tx}
-                      isLast={idx === group.transactions.length - 1}
-                      onPress={(clickedTx) => setSelectedTx(clickedTx)}
-                    />
-                  ))}
-                </View>
+                {group.transactions.length > 0 && (
+                  <View style={styles.txCard}>
+                    {group.transactions.map((tx, idx) => (
+                      <TransactionRow
+                        key={tx.id}
+                        transaction={tx}
+                        isLast={idx === group.transactions.length - 1}
+                        onPress={(clickedTx) => setSelectedTx(clickedTx)}
+                      />
+                    ))}
+                  </View>
+                )}
               </Animated.View>
             );
           })
@@ -341,9 +415,17 @@ export default function ActivityScreen() {
         transaction={selectedTx}
         onClose={() => setSelectedTx(null)}
         onUpdated={() => {
-          loadTransactions();
+          loadData();
           refreshFinancials();
         }}
+      />
+
+      {/* ─── Money Memory Daily Journal Modal (Feature B3) ─── */}
+      <DailyJournalModal
+        visible={journalModalVisible}
+        date={selectedJournalDate}
+        onClose={() => setJournalModalVisible(false)}
+        onSaved={loadData}
       />
     </View>
   );
@@ -462,11 +544,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingTop: 4,
   },
+  dateLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   dateLabel: {
     ...Typography.labelCaps,
     color: Colors.primaryFixed,
     fontSize: 11,
     letterSpacing: 0.8,
+  },
+  addStoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(212, 255, 50, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 255, 50, 0.25)',
+  },
+  addStoryBtnActive: {
+    backgroundColor: Colors.chartreuse,
+    borderColor: Colors.chartreuse,
+  },
+  addStoryBtnText: {
+    fontSize: 9.5,
+    fontFamily: FontFamily.mono,
+    fontWeight: '700',
+    color: Colors.chartreuse,
+  },
+  addStoryBtnTextActive: {
+    color: '#000000',
   },
   dateNet: {
     fontFamily: FontFamily.numericMedium,

@@ -13,6 +13,11 @@ const categoryMap = new Map(SEED_DATA.categories.map((c) => [c.id, c]));
 const accountMap = new Map(SEED_DATA.accounts.map((a) => [a.id, a]));
 const cardMap = new Map(SEED_DATA.creditCards.map((c) => [c.id, c]));
 
+let inMemoryTransactions: any[] = SEED_DATA.transactions.map((t) => ({
+  ...t,
+  is_reviewed: 0,
+}));
+
 let inMemoryTemporaryTransactions: any[] = [
   {
     id: 'temp_seed_1',
@@ -92,6 +97,41 @@ const mockDb = {
       inMemoryTemporaryTransactions = inMemoryTemporaryTransactions.filter((t) => t.id !== id);
       return { changes: 1, lastInsertRowId: 0 };
     }
+    if (sql.includes('DELETE FROM transactions') && params) {
+      const id = params[0];
+      inMemoryTransactions = inMemoryTransactions.filter((t) => t.id !== id);
+      return { changes: 1, lastInsertRowId: 0 };
+    }
+    if (sql.includes('INSERT INTO transactions') && params) {
+      inMemoryTransactions.unshift({
+        id: params[0],
+        type: params[1],
+        amount: params[2],
+        account_id: params[3],
+        dest_account_id: params[4],
+        credit_card_id: params[5],
+        category_id: params[6],
+        subcategory_id: params[7],
+        date: params[8],
+        time: params[9],
+        note: params[10],
+        expression: params[11],
+        is_reviewed: params[12] ?? 0,
+        created_at: params[13],
+        updated_at: params[14],
+      });
+      return { changes: 1, lastInsertRowId: 1 };
+    }
+    if (sql.includes('UPDATE transactions SET is_reviewed = 1')) {
+      if (sql.includes('WHERE id = ?') && params) {
+        const id = params[1];
+        const tx = inMemoryTransactions.find((t) => t.id === id);
+        if (tx) tx.is_reviewed = 1;
+      } else {
+        inMemoryTransactions.forEach((t) => (t.is_reviewed = 1));
+      }
+      return { changes: 1, lastInsertRowId: 0 };
+    }
     return { changes: 0, lastInsertRowId: 0 };
   },
   getAllSync: <T>(sql: string, _params?: any[]): T[] => {
@@ -129,7 +169,11 @@ const mockDb = {
 
     // 2. Transaction feed with joins (Recent Activity, History)
     if (sql.includes('FROM transactions')) {
-      return SEED_DATA.transactions.map((t) => {
+      let txList = inMemoryTransactions;
+      if (sql.includes('is_reviewed, 0) = 0')) {
+        txList = txList.filter((t) => !t.is_reviewed);
+      }
+      return txList.map((t) => {
         const cat = t.category_id ? categoryMap.get(t.category_id) : undefined;
         const acc = t.account_id ? accountMap.get(t.account_id) : undefined;
         const card = t.credit_card_id ? cardMap.get(t.credit_card_id) : undefined;
@@ -213,6 +257,18 @@ const mockDb = {
       const id = params?.[0];
       const found = inMemoryTemporaryTransactions.find((t) => t.id === id);
       return (found || inMemoryTemporaryTransactions[0] || null) as unknown as T;
+    }
+    if (sql.includes('FROM transactions WHERE id = ?') && params) {
+      const id = params[0];
+      const found = inMemoryTransactions.find((t) => t.id === id);
+      return (found || null) as unknown as T;
+    }
+    if (sql.includes('COUNT(*) as count FROM transactions WHERE COALESCE(is_reviewed, 0) = 0') || sql.includes('is_reviewed, 0) = 0')) {
+      const count = inMemoryTransactions.filter((t) => !t.is_reviewed).length;
+      return { count } as unknown as T;
+    }
+    if (sql.includes('SUM(amount) as total_budget FROM budgets')) {
+      return { total_budget: 15000 } as unknown as T;
     }
     if (sql.includes('COUNT(*)')) {
       return { count: SEED_DATA.categories.length } as unknown as T;

@@ -38,6 +38,7 @@ import {
   MerchantRepository,
   TemporaryTransactionRepository,
   BudgetRepository,
+  SmsStagingRepository,
 } from '@/repositories';
 import { AiIntelligenceService, SoundService } from '@/services';
 import { useFinancialStore, useTemporaryTransactionStore } from '@/stores';
@@ -48,14 +49,35 @@ export default function AddTransactionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
+    editId?: string;
     prefillDate?: string;
+    date?: string;
+    time?: string;
     type?: string;
     amount?: string;
     note?: string;
     category?: string;
+    categoryId?: string;
+    subcategoryId?: string;
     account?: string;
+    accountId?: string;
+    destAccountId?: string;
+    creditCardId?: string;
+    stagedSmsId?: string;
   }>();
   const { accounts, creditCards, categories, refreshFinancials } = useFinancialStore();
+
+  const isEditing = Boolean(params.editId);
+  const existingTx = useMemo(() => {
+    if (params.editId) {
+      try {
+        return TransactionRepository.getById(params.editId);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }, [params.editId]);
 
   // Current Today String
   const todayStr = useMemo(() => {
@@ -63,15 +85,21 @@ export default function AddTransactionScreen() {
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Transaction Form State (Supports deep-link from Android Home Screen Widget or AI Co-Pilot)
+  // Transaction Form State (Supports deep-link from Android Home Screen Widget or AI Co-Pilot or Edit Mode)
   const [type, setType] = useState<TransactionType>(() => {
-    if (params.type === 'income' || params.type === 'transfer') {
-      return params.type;
+    const rawType = existingTx?.type || params.type;
+    if (rawType === 'income' || rawType === 'transfer') {
+      return rawType;
     }
     return 'expense';
   });
-  const [expression, setExpression] = useState<string>(() => params.amount || '0');
+  const [expression, setExpression] = useState<string>(() => {
+    if (existingTx) return String(existingTx.amount);
+    return params.amount || '0';
+  });
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(() => {
+    if (existingTx?.category_id) return existingTx.category_id;
+    if (params.categoryId) return params.categoryId;
     if (params.category && categories?.length) {
       const match = categories.find((c) => c.name.toLowerCase().includes(params.category!.toLowerCase()));
       if (match) return match.id;
@@ -79,8 +107,13 @@ export default function AddTransactionScreen() {
     const firstExpense = categories?.find((c) => c.type === 'expense' && c.is_active === 1);
     return firstExpense?.id || 'cat_food';
   });
-  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
-  const [sourceType, setSourceType] = useState<'account' | 'credit_card'>('account');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(() => {
+    return existingTx?.subcategory_id || params.subcategoryId || null;
+  });
+  const [sourceType, setSourceType] = useState<'account' | 'credit_card'>(() => {
+    if (existingTx?.credit_card_id || params.creditCardId) return 'credit_card';
+    return 'account';
+  });
 
   // Compute primary bank account
   const primaryAccount = useMemo(() => {
@@ -88,15 +121,22 @@ export default function AddTransactionScreen() {
   }, [accounts]);
 
   const [sourceId, setSourceId] = useState<string>(() => {
+    if (existingTx?.credit_card_id) return existingTx.credit_card_id;
+    if (existingTx?.account_id) return existingTx.account_id;
+    if (params.creditCardId) return params.creditCardId;
+    if (params.accountId) return params.accountId;
+    if (params.account) return params.account;
     const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
     return primary?.id || accounts[0]?.id || '';
   });
   const [destAccountId, setDestAccountId] = useState<string>(() => {
+    if (existingTx?.dest_account_id) return existingTx.dest_account_id;
+    if (params.destAccountId) return params.destAccountId;
     const primary = accounts.find((a) => a.is_primary === 1 && a.is_active === 1);
     const secondary = accounts.find((a) => a.id !== (primary?.id || accounts[0]?.id));
     return secondary?.id || accounts[1]?.id || '';
   });
-  const [note, setNote] = useState<string>(() => params.note || '');
+  const [note, setNote] = useState<string>(() => existingTx?.note || params.note || '');
   const [isTemporary, setIsTemporary] = useState<boolean>(false);
   const [personName, setPersonName] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -166,10 +206,10 @@ export default function AddTransactionScreen() {
     }
   };
 
-  // Date selection state (supports custom/past dates & prefill from calendar)
-  const [transactionDate, setTransactionDate] = useState<string>(
-    params.prefillDate || todayStr
-  );
+  // Date selection state (supports custom/past dates & prefill from calendar / edit mode)
+  const [transactionDate, setTransactionDate] = useState<string>(() => {
+    return existingTx?.date || params.date || params.prefillDate || todayStr;
+  });
   const [dateModalVisible, setDateModalVisible] = useState(false);
   const [customDateInput, setCustomDateInput] = useState(transactionDate);
 
@@ -306,7 +346,7 @@ export default function AddTransactionScreen() {
       return;
     }
 
-    const txId = `tx_${Date.now()}`;
+    const txId = params.editId || `tx_${Date.now()}`;
 
     const validAccountId =
       sourceType === 'account' && sourceId && accounts.some((a) => a.id === sourceId)
@@ -331,14 +371,28 @@ export default function AddTransactionScreen() {
       category_id: type !== 'transfer' ? selectedCategoryId : null,
       subcategory_id: type !== 'transfer' ? selectedSubcategoryId : null,
       date: transactionDate,
-      time,
+      time: existingTx?.time || params.time || time,
       note: note.trim() || (type === 'transfer' ? 'Transfer' : 'Quick Expense'),
       expression: expression !== `${evaluatedAmount}` ? expression : null,
-      created_at: new Date().toISOString(),
+      is_reviewed: 1, // When edited or saved in audit flow, mark as reviewed/verified
+      created_at: existingTx?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    TransactionRepository.create(tx);
+    if (params.editId) {
+      TransactionRepository.update(tx);
+    } else {
+      TransactionRepository.create(tx);
+    }
+
+    // If originated from staged bank SMS, mark as converted
+    if (params.stagedSmsId) {
+      try {
+        SmsStagingRepository.markConverted(params.stagedSmsId);
+      } catch (err) {
+        console.warn('Failed to mark staged SMS as converted:', err);
+      }
+    }
 
     // Reactive store update
     refreshFinancials();
@@ -414,7 +468,9 @@ export default function AddTransactionScreen() {
           <X size={20} color={Colors.onSurface} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>LOG TRANSACTION</Text>
+        <Text style={styles.headerTitle}>
+          {isEditing ? 'EDIT TRANSACTION' : 'LOG TRANSACTION'}
+        </Text>
 
         <TouchableOpacity
           style={styles.datePill}

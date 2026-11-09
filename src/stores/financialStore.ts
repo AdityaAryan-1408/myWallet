@@ -27,7 +27,7 @@ import {
   BudgetWithProgress,
   OverallBudgetProgress,
 } from '@/repositories';
-import { NotificationService, WidgetService, DynamicIconService } from '@/services';
+import { NotificationService, WidgetService, DynamicIconService, VelocityAlertService, VelocityAlert } from '@/services';
 import {
   calculateAvailableToSpend,
   calculateDailyPacing,
@@ -64,10 +64,15 @@ interface FinancialState {
   debtSummary: DebtSummary | null;
   inAppNotifications: InAppNotification[];
   unreadNotificationsCount: number;
+  activeVelocityAlert: VelocityAlert | null;
+  unreviewedTransactionsCount: number;
 
   // Actions
   initialize: () => void;
   refreshFinancials: () => void;
+  refreshUnreviewedCount: () => void;
+  setActiveVelocityAlert: (alert: VelocityAlert | null) => void;
+  dismissVelocityAlert: (id: string) => void;
   setUserName: (name: string) => void;
   setAvatarBadge: (badge: string) => void;
   setCurrency: (currency: string) => void;
@@ -142,6 +147,8 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
   debtSummary: null,
   inAppNotifications: [],
   unreadNotificationsCount: 0,
+  activeVelocityAlert: null,
+  unreviewedTransactionsCount: 0,
 
   initialize: () => {
     try {
@@ -478,11 +485,26 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
     }
   },
 
+  setActiveVelocityAlert: (alert) => {
+    set({ activeVelocityAlert: alert });
+  },
+
+  dismissVelocityAlert: (id) => {
+    try {
+      VelocityAlertService.dismissAlert(id);
+      set({ activeVelocityAlert: null });
+      get().refreshNotifications();
+    } catch (error) {
+      console.error('Error dismissing velocity alert:', error);
+    }
+  },
+
   refreshNotifications: () => {
     try {
       const inAppNotifications = NotificationRepository.getAll();
       const unreadNotificationsCount = NotificationRepository.getUnreadCount();
-      set({ inAppNotifications, unreadNotificationsCount });
+      const activeVelocityAlert = VelocityAlertService.getActiveAlert();
+      set({ inAppNotifications, unreadNotificationsCount, activeVelocityAlert });
     } catch (error) {
       console.error('Error refreshing notifications:', error);
     }
@@ -508,6 +530,11 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       const debtSummary = DebtRepository.getDebtSummary();
       const inAppNotifications = NotificationRepository.getAll();
       const unreadNotificationsCount = NotificationRepository.getUnreadCount();
+      const activeVelocityAlert = VelocityAlertService.getActiveAlert();
+      let unreviewedTransactionsCount = 0;
+      try {
+        unreviewedTransactionsCount = TransactionRepository.getUnreviewedCount();
+      } catch {}
 
       const totalBankCashBalance = AccountRepository.getTotalBankCashBalance();
       const totalAvailableBankCashBalance = AccountRepository.getTotalAvailableBankCashBalance();
@@ -553,9 +580,20 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
         debtSummary,
         inAppNotifications,
         unreadNotificationsCount,
+        activeVelocityAlert,
+        unreviewedTransactionsCount,
       });
     } catch (error) {
       console.error('Error refreshing financials:', error);
+    }
+  },
+
+  refreshUnreviewedCount: () => {
+    try {
+      const count = TransactionRepository.getUnreviewedCount();
+      set({ unreviewedTransactionsCount: count });
+    } catch (error) {
+      console.error('Error refreshing unreviewed count:', error);
     }
   },
 }));

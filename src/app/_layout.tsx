@@ -7,7 +7,7 @@
 
 import React, { useEffect } from 'react';
 import { AppState, StatusBar, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import {
@@ -37,6 +37,7 @@ import { DynamicIconService } from '@/services';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const router = useRouter();
   const [fontsLoaded, fontError] = useFonts({
     // Plus Jakarta Sans
     PlusJakartaSans: PlusJakartaSans_400Regular,
@@ -95,11 +96,65 @@ export default function RootLayout() {
       }
     });
 
+    // SMS Staging / Notification individual response listener
+    const notifResponseSub = NotificationService.addResponseListener(async (response) => {
+      const notifId = response?.notification?.request?.identifier;
+      const data = response?.notification?.request?.content?.data;
+
+      // Dismiss ONLY this notification, preserving other bank SMS notifications in the shade!
+      if (notifId) {
+        await NotificationService.dismissNotification(notifId);
+      }
+
+      if (data && data.type === 'staged_sms') {
+        const payload = data as Record<string, string>;
+        router.push({
+          pathname: '/add-transaction',
+          params: {
+            type: payload.txType ? String(payload.txType) : 'expense',
+            amount: payload.amount ? String(payload.amount) : '',
+            note: payload.note ? String(payload.note) : '',
+            account: payload.accountId ? String(payload.accountId) : undefined,
+            creditCardId: payload.creditCardId ? String(payload.creditCardId) : undefined,
+            category: payload.categoryId ? String(payload.categoryId) : undefined,
+            stagedSmsId: payload.stagedId ? String(payload.stagedId) : undefined,
+          },
+        });
+      }
+    });
+
+    // Cold start check (if opened from tapped notification while app was closed)
+    NotificationService.getLastResponse().then(async (response) => {
+      if (response?.notification) {
+        const notifId = response.notification.request.identifier;
+        const data = response.notification.request.content.data;
+        if (notifId) {
+          await NotificationService.dismissNotification(notifId);
+        }
+        if (data && data.type === 'staged_sms') {
+          const payload = data as Record<string, string>;
+          router.push({
+            pathname: '/add-transaction',
+            params: {
+              type: payload.txType ? String(payload.txType) : 'expense',
+              amount: payload.amount ? String(payload.amount) : '',
+              note: payload.note ? String(payload.note) : '',
+              account: payload.accountId ? String(payload.accountId) : undefined,
+              creditCardId: payload.creditCardId ? String(payload.creditCardId) : undefined,
+              category: payload.categoryId ? String(payload.categoryId) : undefined,
+              stagedSmsId: payload.stagedId ? String(payload.stagedId) : undefined,
+            },
+          });
+        }
+      }
+    }).catch(() => {});
+
     return () => {
       isMounted = false;
       appStateSubscription.remove();
+      notifResponseSub?.remove();
     };
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, router]);
 
   const { themeMode } = useFinancialStore();
   const isLight = themeMode === 'light' || themeMode === 'mono_light';
