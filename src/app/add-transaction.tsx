@@ -104,9 +104,28 @@ export default function AddTransactionScreen() {
       const match = categories.find((c) => c.name.toLowerCase().includes(params.category!.toLowerCase()));
       if (match) return match.id;
     }
+    const initialType = existingTx?.type || params.type;
+    if (initialType === 'income') {
+      const firstIncome = categories?.find((c) => c.type === 'income' && c.is_active === 1);
+      return firstIncome?.id || 'cat_salary';
+    }
     const firstExpense = categories?.find((c) => c.type === 'expense' && c.is_active === 1);
     return firstExpense?.id || 'cat_food';
   });
+
+  // Sync category type if navigated with params.type
+  React.useEffect(() => {
+    if (params.type === 'income') {
+      const firstIncome = categories?.find((c) => c.type === 'income' && c.is_active === 1);
+      setSelectedCategoryId(firstIncome?.id || 'cat_salary');
+      setSelectedSubcategoryId(null);
+      setIsTemporary(false);
+    } else if (params.type === 'expense') {
+      const firstExpense = categories?.find((c) => c.type === 'expense' && c.is_active === 1);
+      setSelectedCategoryId(firstExpense?.id || 'cat_food');
+      setSelectedSubcategoryId(null);
+    }
+  }, [params.type]);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(() => {
     return existingTx?.subcategory_id || params.subcategoryId || null;
   });

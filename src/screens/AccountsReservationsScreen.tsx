@@ -123,7 +123,7 @@ export default function AccountsReservationsScreen({ isTab = false }: { isTab?: 
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string }>();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<any>(null);
 
   const {
     accounts,

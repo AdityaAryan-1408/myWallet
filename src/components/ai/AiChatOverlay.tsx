@@ -72,7 +72,7 @@ export function AiChatOverlay({ isOpen, onMinimize, onClose }: AiChatOverlayProp
 
   const [inputText, setInputText] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<any>(null);
 
   // Live Zustand state
   const { messages, isGenerating, telemetryStatus, sendMessage, clearChat, markResponseRead } =

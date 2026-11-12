@@ -47,7 +47,13 @@ import {
   BellRing,
   Palette,
   Volume2,
+  LayoutGrid,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Paths, File } from 'expo-file-system';
+import { Image } from 'expo-image';
 
 import {
   SettingsRepository,
@@ -64,9 +70,30 @@ import {
   NotificationDiagnosticsCard,
   AiCoPilotSettingsCard,
 } from '@/components/settings';
-import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation, ThemeMode } from '@/theme';
+import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation, ThemeMode, UIStyle } from '@/theme';
 
 type SettingsTab = 'preferences' | 'profile' | 'backup';
+
+const UI_STYLE_OPTIONS = [
+  {
+    style: 'zenith' as const,
+    name: 'Zenith Cyber HUD',
+    tag: 'DEFAULT',
+    description: 'Cyber-luxury dark interface, high-density financial analytics, interactive horizons',
+    canvasColor: '#05070B',
+    surfaceColor: '#0E131F',
+    accentColor: '#D4FF32',
+  },
+  {
+    style: 'minimal' as const,
+    name: 'Finans Warm Minimal',
+    tag: 'NEW',
+    description: 'Humanist Scandinavian minimalism, warm light cream palette, simplified card flows',
+    canvasColor: '#FCF9F8',
+    surfaceColor: '#FFFFFF',
+    accentColor: '#FFDB2F',
+  },
+];
 
 const CURRENCY_OPTIONS = [
   { code: 'INR', symbol: '₹', label: 'INR (₹)' },
@@ -218,6 +245,8 @@ export function SettingsScreen() {
   const {
     userName,
     avatarBadge,
+    avatarPhotoUri,
+    setAvatarPhotoUri,
     currency,
     themeMode,
     setCurrency,
@@ -227,7 +256,70 @@ export function SettingsScreen() {
     recentTransactions,
   } = useFinancialStore();
 
-  const { ambientParticlesEnabled, setAmbientParticlesEnabled } = useThemeStore();
+  const { ambientParticlesEnabled, setAmbientParticlesEnabled, uiStyle, setUIStyle } = useThemeStore();
+
+  const handleSelectUIStyle = (style: UIStyle) => {
+    if (uiStyle === style) return;
+    if (hapticsEnabled) {
+      Haptics.selectionAsync();
+    }
+    setUIStyle(style);
+  };
+
+  const handlePickAvatarPhoto = async () => {
+    try {
+      if (hapticsEnabled) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please grant access to your photo gallery to select a profile avatar photo.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const pickedUri = result.assets[0].uri;
+        let persistentUri = pickedUri;
+
+        try {
+          if (Paths?.document) {
+            const ext = pickedUri.split('.').pop() || 'jpg';
+            const file = new File(pickedUri);
+            const dest = new File(Paths.document, `avatar_${Date.now()}.${ext}`);
+            file.copy(dest);
+            persistentUri = dest.uri;
+          }
+        } catch (e) {
+          console.warn('Could not copy image to app directory:', e);
+        }
+
+        setAvatarPhotoUri(persistentUri);
+        if (hapticsEnabled) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to pick avatar image:', err);
+      Alert.alert('Error', 'Could not open image library.');
+    }
+  };
+
+  const handleRemoveAvatarPhoto = () => {
+    if (hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setAvatarPhotoUri(null);
+  };
 
   const handleToggleAmbientParticles = (val: boolean) => {
     setAmbientParticlesEnabled(val);
@@ -512,7 +604,147 @@ export function SettingsScreen() {
         {/* ═════════ SECTION 1: PREFERENCES ═════════ */}
         {activeTab === 'preferences' && (
           <Animated.View entering={FadeInDown.duration(400)}>
+            {/* ─── INTERFACE STYLE STUDIO CARD ─── */}
+            <View style={styles.sectionCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardHeader}>
+                  <LayoutGrid size={16} color={Colors.chartreuse} />
+                  <Text style={styles.cardHeaderTitle}>INTERFACE STYLE</Text>
+                </View>
+                <View style={styles.versionTag}>
+                  <Text style={styles.versionTagText}>v2.0</Text>
+                </View>
+              </View>
+              <Text style={styles.cardDesc}>
+                Select the structural design archetype: Zenith cyber-luxury HUD or Finans Warm Minimal ergonomics.
+              </Text>
+
+              <View style={styles.themeGrid}>
+                {UI_STYLE_OPTIONS.map((opt) => {
+                  const isSelected = uiStyle === opt.style;
+                  return (
+                    <TouchableOpacity
+                      key={opt.style}
+                      style={[
+                        styles.themeCard,
+                        isSelected && [
+                          styles.themeCardActive,
+                          { borderColor: opt.accentColor },
+                        ],
+                      ]}
+                      onPress={() => handleSelectUIStyle(opt.style)}
+                      activeOpacity={0.8}
+                    >
+                      <View
+                        style={[
+                          styles.themeSwatchPreview,
+                          { backgroundColor: opt.canvasColor },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.themeMiniCard,
+                            {
+                              backgroundColor: opt.surfaceColor,
+                              borderColor: opt.accentColor + '50',
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.themeAccentPill,
+                              { backgroundColor: opt.accentColor },
+                            ]}
+                          />
+                        </View>
+                        {isSelected && (
+                          <View
+                            style={[
+                              styles.themeSelectedBadge,
+                              { backgroundColor: opt.accentColor },
+                            ]}
+                          >
+                            <Check
+                              size={12}
+                              color={opt.style === 'minimal' ? '#171717' : '#101319'}
+                              strokeWidth={3}
+                            />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.themeInfo}>
+                        <Text
+                          style={[
+                            styles.themeName,
+                            isSelected && { color: opt.accentColor },
+                          ]}
+                        >
+                          {opt.name}
+                        </Text>
+                        <Text style={styles.themeTag}>{opt.tag}</Text>
+                        <Text style={styles.themeDesc} numberOfLines={2}>
+                          {opt.description}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* ─── PROFILE AVATAR PHOTO CARD ─── */}
+            <View style={styles.sectionCard}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardHeader}>
+                  <Camera size={16} color={Colors.primaryFixed} />
+                  <Text style={styles.cardHeaderTitle}>PROFILE PHOTO & AVATAR</Text>
+                </View>
+              </View>
+              <Text style={styles.cardDesc}>
+                Personalize the top profile icon with a photo from your gallery.
+              </Text>
+
+              <View style={styles.avatarCardRow}>
+                <View style={styles.avatarSettingPreview}>
+                  {avatarPhotoUri ? (
+                    <Image
+                      source={{ uri: avatarPhotoUri }}
+                      style={styles.avatarSettingImage}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <Text style={styles.avatarSettingEmoji}>{avatarBadge || '🚀'}</Text>
+                  )}
+                </View>
+
+                <View style={styles.avatarSettingActions}>
+                  <TouchableOpacity
+                    style={styles.pickPhotoBtn}
+                    onPress={handlePickAvatarPhoto}
+                    activeOpacity={0.8}
+                  >
+                    <ImageIcon size={14} color={Colors.surface} />
+                    <Text style={styles.pickPhotoBtnText}>
+                      {avatarPhotoUri ? 'Change Gallery Photo' : 'Choose Photo from Gallery'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {avatarPhotoUri && (
+                    <TouchableOpacity
+                      style={styles.removePhotoSettingBtn}
+                      onPress={handleRemoveAvatarPhoto}
+                      activeOpacity={0.8}
+                    >
+                      <Trash2 size={13} color={Colors.error} />
+                      <Text style={styles.removePhotoSettingText}>Remove Photo</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+
             {/* ─── THEME STUDIO CARD (v2.0) ─── */}
+            {uiStyle === 'zenith' && (
             <View style={styles.sectionCard}>
               <View style={styles.cardHeaderRow}>
                 <View style={styles.cardHeader}>
@@ -666,6 +898,7 @@ export function SettingsScreen() {
                 />
               </View>
             </View>
+            )}
 
             {/* Currency Format Card */}
             <View style={styles.sectionCard}>
@@ -1086,8 +1319,8 @@ export function SettingsScreen() {
               )}
             </View>
 
-            {/* AI Co-Pilot (Zenith Agent) API Settings */}
-            <AiCoPilotSettingsCard />
+            {/* AI Co-Pilot (Zenith Agent) API Settings — Only shown in Zenith mode */}
+            {uiStyle === 'zenith' && <AiCoPilotSettingsCard />}
 
             {/* Android Home Screen Widget (Phase 18) */}
             <WidgetPreviewCard />
@@ -1099,12 +1332,24 @@ export function SettingsScreen() {
           <Animated.View entering={FadeInDown.duration(400)}>
             {/* User Profile Overview */}
             <View style={styles.profileCard}>
-              <View style={styles.avatarBigBox}>
-                <Text style={styles.avatarBigEmoji}>{avatarBadge || '🚀'}</Text>
-              </View>
+              <TouchableOpacity
+                style={styles.avatarBigBox}
+                onPress={handlePickAvatarPhoto}
+                activeOpacity={0.8}
+              >
+                {avatarPhotoUri ? (
+                  <Image
+                    source={{ uri: avatarPhotoUri }}
+                    style={styles.avatarBigImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <Text style={styles.avatarBigEmoji}>{avatarBadge || '🚀'}</Text>
+                )}
+              </TouchableOpacity>
               <View style={styles.profileMeta}>
                 <Text style={styles.profileName}>{userName}</Text>
-                <Text style={styles.profileSubtitle}>Zenith Wallet Owner</Text>
+                <Text style={styles.profileSubtitle}>Local Ledger Owner</Text>
                 <View style={styles.localBadge}>
                   <ShieldCheck size={11} color={Colors.primaryFixed} />
                   <Text style={styles.localBadgeText}>LOCAL PROFILE • ENCRYPTED</Text>
@@ -1147,8 +1392,8 @@ export function SettingsScreen() {
               </View>
             </View>
 
-            {/* AI Co-Pilot Intelligence Configuration */}
-            <AiCoPilotSettingsCard />
+            {/* AI Co-Pilot Intelligence Configuration — Only shown in Zenith mode */}
+            {uiStyle === 'zenith' && <AiCoPilotSettingsCard />}
 
             {/* Privacy & Sovereignty Commitment */}
             <View style={styles.sectionCard}>
@@ -1272,7 +1517,7 @@ export function SettingsScreen() {
 
         {/* Footer Brand & Version */}
         <View style={styles.footerBranding}>
-          <Text style={styles.footerVersionText}>MyWallet v3.0.0 (Build 18)</Text>
+          <Text style={styles.footerVersionText}>MyWallet v4.0.0 (Build 24)</Text>
           <Text style={styles.footerSubText}>Zenith Adaptive Architecture • Offline SQLite</Text>
         </View>
 
@@ -1612,9 +1857,77 @@ const styles = StyleSheet.create({
     borderColor: `${Colors.primaryFixed}60`,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarBigImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 27,
   },
   avatarBigEmoji: {
     fontSize: 26,
+  },
+  avatarCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 12,
+  },
+  avatarSettingPreview: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.surfaceContainerHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.primaryFixed,
+    overflow: 'hidden',
+  },
+  avatarSettingImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 30,
+  },
+  avatarSettingEmoji: {
+    fontSize: 28,
+  },
+  avatarSettingActions: {
+    flex: 1,
+    gap: 8,
+  },
+  pickPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.primaryFixed,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: Shapes.pill,
+    alignSelf: 'flex-start',
+  },
+  pickPhotoBtnText: {
+    ...Typography.bodySmMedium,
+    color: Colors.surface,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  removePhotoSettingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: Shapes.pill,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  removePhotoSettingText: {
+    ...Typography.bodySmMedium,
+    color: Colors.error,
+    fontSize: 11.5,
   },
   profileMeta: {
     flex: 1,

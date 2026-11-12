@@ -6,6 +6,7 @@
 
 export {
   Colors,
+  FinansWarmMinimalColors,
   DarkColors,
   LightColors,
   MonoDarkColors,
@@ -36,3 +37,13 @@ export type { ShapeToken } from './shapes';
 
 export { Elevation } from './elevation';
 export { PaperTheme } from './paperTheme';
+
+export {
+  activeUIStyle,
+  isMinimalStyle,
+  isZenithStyle,
+  VALID_UI_STYLES,
+  isValidUIStyle,
+  getInitialUIStyle,
+} from './uiStyle';
+export type { UIStyle } from './uiStyle';

@@ -26,13 +26,15 @@ import {
   CheckCircle2,
 } from 'lucide-react-native';
 
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useThemeStore } from '@/stores';
 import { formatINR } from '@/domain/financialCalculations';
 import { Colors, Typography, Spacing, Shapes, FontFamily, Elevation } from '@/theme';
 
 export function WidgetPreviewCard() {
   const router = useRouter();
   const { availableToSpend, dailySpendLimit, currency } = useFinancialStore();
+  const uiStyle = useThemeStore((s) => s.uiStyle);
+  const isMinimal = uiStyle === 'minimal';
 
   const isHealthy = availableToSpend > 0 && dailySpendLimit >= 300;
   const isCaution = availableToSpend > 0 && dailySpendLimit < 300;
@@ -51,12 +53,24 @@ export function WidgetPreviewCard() {
     <View style={styles.cardContainer}>
       <View style={styles.sectionHeaderRow}>
         <View style={styles.headerLeft}>
-          <Smartphone size={16} color={Colors.chartreuse} />
+          <Smartphone size={16} color={isMinimal ? '#E5A500' : Colors.chartreuse} />
           <Text style={styles.sectionTitle}>GLANCEABLE ANDROID WIDGET</Text>
         </View>
-        <View style={styles.liveSyncBadge}>
+        <View
+          style={[
+            styles.liveSyncBadge,
+            isMinimal && { backgroundColor: 'rgba(255, 219, 47, 0.22)' },
+          ]}
+        >
           <View style={[styles.pulseDot, { backgroundColor: statusColor }]} />
-          <Text style={styles.liveSyncText}>AUTO-SYNC ACTIVE</Text>
+          <Text
+            style={[
+              styles.liveSyncText,
+              isMinimal && { color: '#8A7200' },
+            ]}
+          >
+            AUTO-SYNC ACTIVE
+          </Text>
         </View>
       </View>
 
@@ -64,45 +78,95 @@ export function WidgetPreviewCard() {
         Mid-sized (4x2 / 3x2) dynamic widget. Shows Safe-to-Spend balance in real time without needing to open the app, with 1-tap instant expense entry.
       </Text>
 
-      {/* ─── 1:1 Zenith Obsidian Widget Mockup Frame ─── */}
+      {/* ─── 1:1 Widget Mockup Frame (Theme-Adaptive) ─── */}
       <View style={styles.widgetFrameWrapper}>
-        <View style={styles.widgetCard}>
+        <View
+          style={[
+            styles.widgetCard,
+            isMinimal && styles.widgetCardMinimal,
+          ]}
+        >
           {/* Left Column: Info & Metrics */}
           <View style={styles.widgetInfoCol}>
             {/* Top Eyebrow */}
             <View style={styles.eyebrowRow}>
               <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={styles.brandText}>MYWALLET</Text>
-              <Text style={styles.separatorText}>•</Text>
-              <Text style={styles.eyebrowText}>SAFE TO SPEND</Text>
+              <Text
+                style={[
+                  styles.brandText,
+                  isMinimal && { color: '#1C1B1B' },
+                ]}
+              >
+                {isMinimal ? 'FINANS' : 'MYWALLET'}
+              </Text>
+              <Text
+                style={[
+                  styles.separatorText,
+                  isMinimal && { color: '#B5B3A5' },
+                ]}
+              >
+                •
+              </Text>
+              <Text
+                style={[
+                  styles.eyebrowText,
+                  isMinimal && { color: '#737166' },
+                ]}
+              >
+                SAFE TO SPEND
+              </Text>
             </View>
 
             {/* Big Amount */}
-            <Text style={styles.balanceText} numberOfLines={1}>
+            <Text
+              style={[
+                styles.balanceText,
+                isMinimal && { color: '#1C1B1B' },
+              ]}
+              numberOfLines={1}
+            >
               {formatINR(availableToSpend)}
             </Text>
 
             {/* Sub-label: Daily Pace */}
-            <Text style={styles.dailyPaceText}>
+            <Text
+              style={[
+                styles.dailyPaceText,
+                isMinimal && { color: '#737166' },
+              ]}
+            >
               {formatINR(dailySpendLimit)}/day safe pace
             </Text>
           </View>
 
           {/* Right Column: 1-Tap (+) Action Button */}
           <TouchableOpacity
-            style={styles.addBtn}
+            style={[
+              styles.addBtn,
+              isMinimal && styles.addBtnMinimal,
+            ]}
             onPress={handleLaunchAddExpense}
             activeOpacity={0.8}
           >
-            <Plus size={22} color="#000" strokeWidth={3} />
+            <Plus size={22} color="#1C1B1B" strokeWidth={3} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* ─── How to Place on Android Launcher ─── */}
-      <View style={styles.footerInfoBox}>
-        <Sparkles size={14} color={Colors.chartreuse} />
-        <Text style={styles.footerInfoText}>
+      <View
+        style={[
+          styles.footerInfoBox,
+          isMinimal && styles.footerInfoBoxMinimal,
+        ]}
+      >
+        <Sparkles size={14} color={isMinimal ? '#E5A500' : Colors.chartreuse} />
+        <Text
+          style={[
+            styles.footerInfoText,
+            isMinimal && { color: '#4A483E' },
+          ]}
+        >
           {Platform.OS === 'android'
             ? 'In Standalone APK: Long-press home screen > Widgets > MyWallet > Drag to place. In Expo Go: Tap (+) above to test instant entry!'
             : 'Configured natively via AppWidgetProvider with zero-reload ACTION_APPWIDGET_UPDATE broadcasts.'}
@@ -180,6 +244,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     ...Elevation.medium,
   },
+  widgetCardMinimal: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#ECEBE4',
+    borderWidth: 1.5,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#171717',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
   widgetInfoCol: {
     flex: 1,
     gap: 2,
@@ -233,6 +313,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...Elevation.low,
   },
+  addBtnMinimal: {
+    backgroundColor: '#FFDB2F',
+    borderRadius: 14, // Finans squircle
+  },
 
   // Footer Info Box
   footerInfoBox: {
@@ -244,6 +328,10 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: Colors.strokeSubtle,
+  },
+  footerInfoBoxMinimal: {
+    backgroundColor: '#F7F6F0',
+    borderColor: '#ECEBE4',
   },
   footerInfoText: {
     ...Typography.bodySm,

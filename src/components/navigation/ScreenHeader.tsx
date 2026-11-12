@@ -12,6 +12,7 @@ import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { Wallet, Calendar, ChevronDown, Bell, ArrowLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors, Typography, Spacing, Shapes } from '@/theme';
@@ -41,7 +42,7 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { userName, avatarBadge, unreadNotificationsCount, creditCards } = useFinancialStore();
+  const { userName, avatarBadge, avatarPhotoUri, unreadNotificationsCount, creditCards } = useFinancialStore();
   const avatarInitial = userName ? userName.trim()[0]?.toUpperCase() || 'A' : 'A';
 
   const displayMonthLabel = useMemo(() => {
@@ -126,7 +127,13 @@ export function ScreenHeader({
             onPress={handleAvatarPress}
           >
             <View style={styles.avatar}>
-              {avatarBadge ? (
+              {avatarPhotoUri ? (
+                <Image
+                  source={{ uri: avatarPhotoUri }}
+                  style={{ width: '100%', height: '100%', borderRadius: 17 }}
+                  contentFit="cover"
+                />
+              ) : avatarBadge ? (
                 <Text style={{ fontSize: 16 }}>{avatarBadge}</Text>
               ) : (
                 <Text style={styles.avatarText}>{avatarInitial}</Text>

@@ -16,6 +16,83 @@
  */
 
 import { NativeModules, Platform } from 'react-native';
+import { getInitialUIStyle } from './uiStyle';
+
+// ─── 0. Finans Warm Minimal (Dedicated Minimal Style Palette from UI2) ──────
+export const FinansWarmMinimalColors = {
+  surface: '#fcf9f8',
+  surfaceDim: '#dcd9d9',
+  surfaceBright: '#fcf9f8',
+  surfaceContainerLowest: '#ffffff',
+  surfaceContainerLow: '#f6f3f2',
+  surfaceContainer: '#f0eded',
+  surfaceContainerHigh: '#eae7e7',
+  surfaceContainerHighest: '#e5e2e1',
+
+  onSurface: '#1c1b1b',
+  onSurfaceVariant: '#6B685B',
+  inverseSurface: '#313030',
+  inverseOnSurface: '#f3f0ef',
+
+  primary: '#6f5d00',
+  onPrimary: '#ffffff',
+  primaryContainer: '#ffdb2f',
+  onPrimaryContainer: '#171717',
+  primaryFixed: '#ffdb2f',
+  primaryFixedDim: '#e7c40d',
+  inversePrimary: '#e7c40d',
+  surfaceTint: '#6f5d00',
+
+  secondary: '#006d40',
+  onSecondary: '#ffffff',
+  secondaryContainer: '#8bf9b5',
+  onSecondaryContainer: '#007444',
+  secondaryFixed: '#8bf9b5',
+  secondaryFixedDim: '#6edc9b',
+
+  tertiary: '#476550',
+  onTertiary: '#ffffff',
+  tertiaryContainer: '#c3e5ca',
+  onTertiaryContainer: '#496752',
+  tertiaryFixed: '#c9ebd0',
+  tertiaryFixedDim: '#adcfb5',
+
+  error: '#ba1a1a',
+  onError: '#ffffff',
+  errorContainer: '#ffdad6',
+  onErrorContainer: '#93000a',
+
+  outline: '#7e7760',
+  outlineVariant: '#cfc6ac',
+
+  income: '#006d40',
+  expense: '#ba1a1a',
+  warning: '#F59E0B',
+  transfer: '#006d40',
+
+  strokeSubtle: 'rgba(23, 23, 23, 0.05)',
+  strokeLight: 'rgba(23, 23, 23, 0.08)',
+  strokeMedium: 'rgba(23, 23, 23, 0.12)',
+  strokeBright: 'rgba(23, 23, 23, 0.18)',
+
+  chartreuse: '#ffdb2f',
+  chartreuseGlow: 'rgba(255, 219, 47, 0.35)',
+  chartreuseWash: 'rgba(255, 219, 47, 0.16)',
+  chartreuseSubtle: 'rgba(255, 219, 47, 0.08)',
+
+  categoryFood: '#E11D48',
+  categoryShopping: '#D97706',
+  categoryTransport: '#059669',
+  categoryEntertainment: '#2563EB',
+  categoryBills: '#EA580C',
+  categoryHealth: '#0D9488',
+  categoryEducation: '#7C3AED',
+  categoryTravel: '#0284C7',
+  categoryPersonalCare: '#DB2777',
+  categorySubscriptions: '#B91C1C',
+  categoryGifts: '#D97706',
+  categoryOther: '#64748B',
+};
 
 // ─── 1. Zenith Dark (Default) ────────────────────────────────────────────────
 export const DarkColors = {
@@ -833,13 +910,15 @@ export function getInitialTheme(): ThemeMode {
   return 'dark';
 }
 
+export const activeUIStyle = getInitialUIStyle();
 export const activeTheme: ThemeMode = getInitialTheme();
 
 /**
  * Design system color tokens for the active theme.
+ * When minimal UI style is active, it uses the dedicated Finans Warm Minimal palette.
  */
 export const Colors = {
-  ...getThemePalette(activeTheme),
+  ...(activeUIStyle === 'minimal' ? FinansWarmMinimalColors : getThemePalette(activeTheme)),
 };
 
 export type ColorToken = keyof typeof DarkColors;

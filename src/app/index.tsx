@@ -20,13 +20,15 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { BottomTabBar } from '@/components/navigation/BottomTabBar';
+import { BottomTabBarMinimal } from '@/components/navigation/BottomTabBarMinimal';
 import { FAB } from '@/components/navigation/FAB';
 import { GlassmorphicSummaryBar } from '@/components/navigation/GlassmorphicSummaryBar';
 import { AiCoPilotContainer } from '@/components/ai';
 import { Colors } from '@/theme';
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useThemeStore } from '@/stores';
 import {
   HomeScreen,
+  HomeScreenMinimal,
   ActivityScreen,
   AccountsReservationsScreen,
   CardsScreen,
@@ -38,11 +40,14 @@ export default function MainTabsPagerScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const isPagerScrollEnabled = useFinancialStore((s) => s.isPagerScrollEnabled);
+  const isWheelMenuOpen = useFinancialStore((s) => s.isWheelMenuOpen);
+  const uiStyle = useThemeStore((s) => s.uiStyle);
+  const isMinimal = uiStyle === 'minimal';
 
   const [activeTab, setActiveTab] = useState(0);
   const activeTabRef = useRef(0);
   const isProgrammaticScrollRef = useRef(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<any>(null);
 
   // Jump to specific tab if deep linked or query parameter provided
   useEffect(() => {
@@ -122,7 +127,8 @@ export default function MainTabsPagerScreen() {
         ref={scrollViewRef}
         horizontal
         pagingEnabled
-        scrollEnabled={isPagerScrollEnabled}
+        scrollEnabled={isPagerScrollEnabled && !isWheelMenuOpen}
+        nestedScrollEnabled={true}
         showsHorizontalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
@@ -134,7 +140,11 @@ export default function MainTabsPagerScreen() {
         contentContainerStyle={{ width: windowWidth * 5 }}
       >
         <View style={{ width: windowWidth, flex: 1 }}>
-          <HomeScreen onNavigateTab={handleTabPress} />
+          {isMinimal ? (
+            <HomeScreenMinimal onNavigateTab={handleTabPress} />
+          ) : (
+            <HomeScreen onNavigateTab={handleTabPress} />
+          )}
         </View>
         <View style={{ width: windowWidth, flex: 1 }}>
           <ActivityScreen />
@@ -150,20 +160,32 @@ export default function MainTabsPagerScreen() {
         </View>
       </ScrollView>
 
-      {/* Synchronized Frosted Glass Bottom Tab Bar */}
-      <BottomTabBar
-        activeIndex={activeTab}
-        onTabPress={handleTabPress}
-      />
+      {/* Bottom Tab Bar (Style-dependent) */}
+      {isMinimal ? (
+        <BottomTabBarMinimal
+          activeIndex={activeTab}
+          onTabPress={handleTabPress}
+        />
+      ) : (
+        <BottomTabBar
+          activeIndex={activeTab}
+          onTabPress={handleTabPress}
+        />
+      )}
 
-      {/* A2: Glassmorphic Floating Summary Bar (hugs bottom above tab bar, alongside FAB) */}
-      <GlassmorphicSummaryBar bottomOffset={88} />
+      {/* A2: Glassmorphic Floating Summary Bar (Zenith HUD only) */}
+      {!isMinimal && <GlassmorphicSummaryBar bottomOffset={88} />}
 
-      {/* Floating Action Button for Transaction Entry */}
-      <FAB onPress={() => router.push('/add-transaction')} bottomOffset={88} />
+      {/* Floating Action Button for Transaction Entry (Zenith HUD only; Minimal uses the Center Tab Button) */}
+      {!isMinimal && (
+        <FAB
+          onPress={() => router.push('/add-transaction')}
+          bottomOffset={88}
+        />
+      )}
 
-      {/* Floating AI Co-Pilot Launcher & Morphing Overlay */}
-      <AiCoPilotContainer />
+      {/* Floating AI Co-Pilot Launcher & Morphing Overlay (Zenith HUD only) */}
+      {!isMinimal && <AiCoPilotContainer />}
     </View>
   );
 }

@@ -32,14 +32,16 @@ import {
   calculateAvailableToSpend,
   calculateDailyPacing,
 } from '@/domain/financialCalculations';
-import { ThemeMode, isValidTheme } from '@/theme';
+import { ThemeMode, isValidTheme, UIStyle, isValidUIStyle, activeUIStyle } from '@/theme';
 
 interface FinancialState {
   isInitialized: boolean;
   userName: string;
   avatarBadge: string;
+  avatarPhotoUri: string | null;
   currency: string;
   themeMode: ThemeMode;
+  uiStyle: UIStyle;
   // Derived Core Metrics
   availableToSpend: number;
   totalBankCashBalance: number;
@@ -75,8 +77,13 @@ interface FinancialState {
   dismissVelocityAlert: (id: string) => void;
   setUserName: (name: string) => void;
   setAvatarBadge: (badge: string) => void;
+  setAvatarPhotoUri: (uri: string | null) => void;
+  hiddenCardBalances: string[];
+  toggleCardBalanceHidden: (cardId: string) => void;
+  isCardBalanceHidden: (cardId: string) => boolean;
   setCurrency: (currency: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
+  setUIStyle: (style: UIStyle) => void;
   deleteTransaction: (id: string) => void;
   deleteCard: (id: string) => void;
   setBudget: (categoryId: string, amount: number) => void;
@@ -109,19 +116,49 @@ interface FinancialState {
   markAllNotificationsAsRead: () => void;
   dismissNotification: (id: string) => void;
   refreshNotifications: () => void;
-  // Pager Lock for Nested Horizontal Scrolls
+  // Pager & Scroll Lock for Nested Scrolls / Wheel Radial Menus
   isPagerScrollEnabled: boolean;
   setPagerScrollEnabled: (enabled: boolean) => void;
+  isWheelMenuOpen: boolean;
+  setIsWheelMenuOpen: (open: boolean) => void;
 }
 
 export const useFinancialStore = create<FinancialState>((set, get) => ({
   isInitialized: false,
   userName: 'Aditya',
   avatarBadge: '🚀',
+  avatarPhotoUri: null,
+  hiddenCardBalances: [],
   currency: 'INR',
   themeMode: 'dark',
+  uiStyle: activeUIStyle,
   isPagerScrollEnabled: true,
   setPagerScrollEnabled: (enabled: boolean) => set({ isPagerScrollEnabled: enabled }),
+  isWheelMenuOpen: false,
+  setIsWheelMenuOpen: (open: boolean) => set({ isWheelMenuOpen: open }),
+  setAvatarPhotoUri: (uri: string | null) => {
+    try {
+      SettingsRepository.setAvatarPhotoUri(uri);
+      set({ avatarPhotoUri: uri });
+    } catch (error) {
+      console.error('Error saving avatar photo URI:', error);
+    }
+  },
+  toggleCardBalanceHidden: (cardId: string) => {
+    const current = get().hiddenCardBalances;
+    const updated = current.includes(cardId)
+      ? current.filter((id) => id !== cardId)
+      : [...current, cardId];
+    try {
+      SettingsRepository.setHiddenCardBalances(updated);
+      set({ hiddenCardBalances: updated });
+    } catch (error) {
+      console.error('Error saving hidden card balances:', error);
+    }
+  },
+  isCardBalanceHidden: (cardId: string) => {
+    return get().hiddenCardBalances.includes(cardId);
+  },
   availableToSpend: 0,
   totalBankCashBalance: 0,
   totalAvailableBankCashBalance: 0,
@@ -155,8 +192,11 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       initDatabase();
       const userName = SettingsRepository.getUserName();
       const avatarBadge = SettingsRepository.getAvatarBadge();
+      const avatarPhotoUri = SettingsRepository.getAvatarPhotoUri();
+      const hiddenCardBalances = SettingsRepository.getHiddenCardBalances();
       const currency = SettingsRepository.getCurrency();
       let themeMode = SettingsRepository.getThemeMode();
+      let uiStyle = SettingsRepository.getUIStyle();
       try {
         if (NativeModules.AppTheme?.getTheme) {
           const nativeTheme = NativeModules.AppTheme.getTheme();
@@ -164,9 +204,15 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
             themeMode = nativeTheme;
           }
         }
+        if (NativeModules.AppTheme?.getStyle) {
+          const nativeStyle = NativeModules.AppTheme.getStyle();
+          if (isValidUIStyle(nativeStyle)) {
+            uiStyle = nativeStyle;
+          }
+        }
       } catch {}
       get().refreshFinancials();
-      set({ isInitialized: true, userName, avatarBadge, currency, themeMode });
+      set({ isInitialized: true, userName, avatarBadge, avatarPhotoUri, hiddenCardBalances, currency, themeMode, uiStyle });
     } catch (error) {
       console.error('Failed to initialize financial store:', error);
       set({ isInitialized: true });
@@ -209,6 +255,18 @@ export const useFinancialStore = create<FinancialState>((set, get) => ({
       set({ themeMode: mode });
     } catch (error) {
       console.error('Error saving theme mode:', error);
+    }
+  },
+
+  setUIStyle: (style: UIStyle) => {
+    try {
+      SettingsRepository.setUIStyle(style);
+      if (NativeModules.AppTheme?.setStyle) {
+        NativeModules.AppTheme.setStyle(style);
+      }
+      set({ uiStyle: style });
+    } catch (error) {
+      console.error('Error saving UI style:', error);
     }
   },
 

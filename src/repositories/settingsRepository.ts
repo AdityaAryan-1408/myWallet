@@ -6,13 +6,14 @@
 
 import { getDatabase } from '@/db/client';
 import { UserSetting } from '@/db/schema';
-import { ThemeMode, isValidTheme } from '@/theme';
+import { ThemeMode, isValidTheme, UIStyle, isValidUIStyle } from '@/theme';
 
 const DEFAULT_USER_NAME = 'Aditya';
 const DEFAULT_AVATAR_BADGE = '🚀';
 const DEFAULT_CURRENCY = 'INR';
 const DEFAULT_CYCLE_RESET_DAY = 1;
 const DEFAULT_THEME_MODE: ThemeMode = 'dark';
+const DEFAULT_UI_STYLE: UIStyle = 'zenith';
 
 export const SettingsRepository = {
   getUserName(): string {
@@ -78,6 +79,16 @@ export const SettingsRepository = {
 
   setThemeMode(mode: ThemeMode): void {
     this.set('theme_mode', mode);
+  },
+
+  getUIStyle(): UIStyle {
+    const val = this.get('ui_style', DEFAULT_UI_STYLE);
+    if (isValidUIStyle(val)) return val;
+    return DEFAULT_UI_STYLE;
+  },
+
+  setUIStyle(style: UIStyle): void {
+    this.set('ui_style', style);
   },
 
   getAmbientParticlesEnabled(): boolean {
@@ -168,6 +179,33 @@ export const SettingsRepository = {
 
   setActiveIconVariant(variant: string): void {
     this.set('active_icon_variant', variant);
+  },
+
+  getAvatarPhotoUri(): string | null {
+    const val = this.get('avatar_photo_uri', '');
+    return val ? val : null;
+  },
+
+  setAvatarPhotoUri(uri: string | null): void {
+    this.set('avatar_photo_uri', uri || '');
+  },
+
+  getHiddenCardBalances(): string[] {
+    try {
+      const val = this.get('hidden_card_balances', '[]');
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  },
+
+  setHiddenCardBalances(cardIds: string[]): void {
+    try {
+      this.set('hidden_card_balances', JSON.stringify(cardIds));
+    } catch (e) {
+      console.warn('Failed to stringify hidden card balances:', e);
+    }
   },
 
   get(key: string, defaultValue: string = ''): string {

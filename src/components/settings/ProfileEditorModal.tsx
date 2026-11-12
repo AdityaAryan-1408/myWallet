@@ -1,8 +1,8 @@
 /**
  * MyWallet — Profile Editor Modal
  * 
- * Allows users to personalize their display name, select curated avatar badges,
- * and review lifetime activity metrics.
+ * Allows users to personalize their display name, pick a custom photo avatar from gallery,
+ * select curated emoji badges, and review lifetime activity metrics.
  */
 
 import React, { useState } from 'react';
@@ -14,9 +14,23 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { X, Check, User, Sparkles, Activity, Shield } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Paths, File } from 'expo-file-system';
+import { Image } from 'expo-image';
+import {
+  X,
+  Check,
+  User,
+  Sparkles,
+  Activity,
+  Shield,
+  Camera,
+  Trash2,
+  Image as ImageIcon,
+} from 'lucide-react-native';
 import { useFinancialStore } from '@/stores';
 import { Colors, Typography, FontFamily, Spacing, Shapes, Elevation } from '@/theme';
 
@@ -35,26 +49,79 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
   const {
     userName,
     avatarBadge,
+    avatarPhotoUri,
     setUserName,
     setAvatarBadge,
+    setAvatarPhotoUri,
     accounts,
     creditCards,
-    recentTransactions,
   } = useFinancialStore();
 
   const [nameInput, setNameInput] = useState(userName);
   const [selectedBadge, setSelectedBadge] = useState(avatarBadge || '🚀');
+  const [tempPhotoUri, setTempPhotoUri] = useState<string | null>(avatarPhotoUri || null);
 
   const handleSave = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setUserName(nameInput.trim() || 'Aditya');
     setAvatarBadge(selectedBadge);
+    setAvatarPhotoUri(tempPhotoUri);
     onClose();
   };
 
   const handleBadgePress = (badge: string) => {
     Haptics.selectionAsync();
     setSelectedBadge(badge);
+  };
+
+  const handlePickFromGallery = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please grant access to your photo gallery to select a profile avatar photo.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const pickedUri = result.assets[0].uri;
+        let persistentUri = pickedUri;
+
+        // Persist to local app storage
+        try {
+          if (Paths?.document) {
+            const ext = pickedUri.split('.').pop() || 'jpg';
+            const file = new File(pickedUri);
+            const dest = new File(Paths.document, `avatar_${Date.now()}.${ext}`);
+            file.copy(dest);
+            persistentUri = dest.uri;
+          }
+        } catch (e) {
+          console.warn('Could not copy image to app directory:', e);
+        }
+
+        setTempPhotoUri(persistentUri);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      console.error('Failed to pick avatar image:', err);
+      Alert.alert('Error', 'Could not open image library.');
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setTempPhotoUri(null);
   };
 
   return (
@@ -74,7 +141,7 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
           <View style={styles.header}>
             <View>
               <Text style={styles.headerTitle}>Edit Profile</Text>
-              <Text style={styles.headerSubtitle}>Personalize name & avatar identifier</Text>
+              <Text style={styles.headerSubtitle}>Personalize name & avatar photo</Text>
             </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
               <X size={18} color={Colors.onSurfaceVariant} />
@@ -84,12 +151,54 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
           <ScrollView style={styles.scrollList} showsVerticalScrollIndicator={false}>
             {/* Visual Avatar Preview */}
             <View style={styles.avatarPreviewSection}>
-              <View style={styles.avatarPreviewBox}>
-                <Text style={styles.avatarPreviewEmoji}>{selectedBadge}</Text>
-              </View>
+              <TouchableOpacity
+                style={styles.avatarPreviewBox}
+                onPress={handlePickFromGallery}
+                activeOpacity={0.8}
+              >
+                {tempPhotoUri ? (
+                  <Image
+                    source={{ uri: tempPhotoUri }}
+                    style={styles.avatarPhoto}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <Text style={styles.avatarPreviewEmoji}>{selectedBadge}</Text>
+                )}
+                <View style={styles.cameraIconBadge}>
+                  <Camera size={12} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+
               <Text style={styles.avatarPreviewName}>
                 {nameInput.trim() || 'Aditya'}
               </Text>
+
+              {/* Photo Action Buttons */}
+              <View style={styles.photoActionsRow}>
+                <TouchableOpacity
+                  style={styles.galleryBtn}
+                  onPress={handlePickFromGallery}
+                  activeOpacity={0.8}
+                >
+                  <ImageIcon size={14} color={Colors.primaryFixed} />
+                  <Text style={styles.galleryBtnText}>
+                    {tempPhotoUri ? 'Change Photo' : 'Choose Photo from Gallery'}
+                  </Text>
+                </TouchableOpacity>
+
+                {tempPhotoUri && (
+                  <TouchableOpacity
+                    style={styles.removePhotoBtn}
+                    onPress={handleRemovePhoto}
+                    activeOpacity={0.8}
+                  >
+                    <Trash2 size={14} color={Colors.error} />
+                    <Text style={styles.removePhotoText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               <View style={styles.sovereigntyPill}>
                 <Shield size={12} color={Colors.primaryFixed} />
                 <Text style={styles.sovereigntyText}>LOCAL PROFILE • ENCRYPTED</Text>
@@ -113,10 +222,10 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
               </View>
             </View>
 
-            {/* Curated Avatar Badges */}
+            {/* Curated Avatar Badges (fallback when photo is not used) */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>AVATAR BADGE</Text>
+                <Text style={styles.inputLabel}>FALLBACK EMOJI BADGE</Text>
                 <Sparkles size={12} color={Colors.chartreuse} />
               </View>
               <View style={styles.badgesGrid}>
@@ -158,27 +267,31 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
                 <View style={styles.statDivider} />
                 <View style={styles.statCol}>
                   <Text style={styles.statVal}>{creditCards.length}</Text>
-                  <Text style={styles.statLbl}>Cards</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statCol}>
-                  <Text style={styles.statVal}>{recentTransactions.length}+</Text>
-                  <Text style={styles.statLbl}>Logged Tx</Text>
+                  <Text style={styles.statLbl}>Credit Cards</Text>
                 </View>
               </View>
             </View>
+          </ScrollView>
 
-            {/* Save Button */}
+          {/* Footer Save Button */}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.saveBtn}
               onPress={handleSave}
               activeOpacity={0.8}
             >
-              <Text style={styles.saveBtnText}>Save Profile Changes</Text>
+              <Check size={16} color={Colors.surface} strokeWidth={2.5} />
+              <Text style={styles.saveBtnText}>Save Profile</Text>
             </TouchableOpacity>
-
-            <View style={{ height: Spacing.xl }} />
-          </ScrollView>
+          </View>
         </View>
       </TouchableOpacity>
     </Modal>
@@ -188,18 +301,19 @@ export function ProfileEditorModal({ visible, onClose }: ProfileEditorModalProps
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.78)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.md,
   },
   sheet: {
-    backgroundColor: Colors.surfaceContainer,
-    borderTopLeftRadius: Shapes.xxl,
-    borderTopRightRadius: Shapes.xxl,
-    paddingHorizontal: Spacing.screenPadding,
-    paddingTop: Spacing.md,
-    maxHeight: '85%',
+    width: '100%',
+    maxHeight: '90%',
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Shapes.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.strokeSubtle,
+    borderColor: Colors.strokeMedium,
     ...Elevation.high,
   },
   header: {
@@ -207,13 +321,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.strokeSubtle,
   },
   headerTitle: {
-    ...Typography.bodyLg,
-    fontWeight: '700',
+    ...Typography.headlineSm,
     color: Colors.onSurface,
+    fontWeight: '700',
   },
   headerSubtitle: {
     ...Typography.bodySm,
@@ -223,28 +337,45 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: Shapes.pill,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scrollList: {
-    marginTop: Spacing.md,
+    maxHeight: 480,
   },
   avatarPreviewSection: {
     alignItems: 'center',
-    marginVertical: Spacing.md,
+    paddingVertical: Spacing.md,
   },
   avatarPreviewBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.surfaceContainerHighest,
-    borderWidth: 2,
-    borderColor: `${Colors.primaryFixed}60`,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: Colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Elevation.medium,
+    borderWidth: 2,
+    borderColor: Colors.primaryFixed,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  avatarPhoto: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 38,
+  },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarPreviewEmoji: {
     fontSize: 34,
@@ -255,6 +386,46 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     fontWeight: '700',
   },
+  photoActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  galleryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surfaceContainerHigh,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+    borderColor: Colors.strokeSubtle,
+  },
+  galleryBtnText: {
+    ...Typography.bodySmMedium,
+    color: Colors.onSurface,
+    fontSize: 12,
+  },
+  removePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Shapes.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  removePhotoText: {
+    ...Typography.bodySmMedium,
+    color: Colors.error,
+    fontSize: 12,
+  },
   sovereigntyPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -263,7 +434,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Shapes.pill,
-    marginTop: 6,
+    marginTop: 8,
   },
   sovereigntyText: {
     fontFamily: FontFamily.numericMedium,
@@ -379,18 +550,41 @@ const styles = StyleSheet.create({
     height: 28,
     backgroundColor: Colors.strokeSubtle,
   },
-  saveBtn: {
-    backgroundColor: Colors.primaryFixed,
-    borderRadius: Shapes.lg,
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.strokeSubtle,
+  },
+  cancelBtn: {
+    flex: 1,
     height: 48,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.xl,
-    ...Elevation.low,
+  },
+  cancelBtnText: {
+    ...Typography.bodySmMedium,
+    color: Colors.onSurfaceVariant,
+    fontWeight: '600',
+  },
+  saveBtn: {
+    flex: 2,
+    height: 48,
+    borderRadius: Shapes.pill,
+    backgroundColor: Colors.primaryFixed,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   saveBtnText: {
-    ...Typography.bodyMdMedium,
-    fontWeight: '700',
+    ...Typography.bodySmMedium,
     color: Colors.surface,
+    fontWeight: '700',
   },
 });

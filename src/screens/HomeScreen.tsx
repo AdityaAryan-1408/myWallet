@@ -80,6 +80,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
     dismissVelocityAlert,
     refreshFinancials,
     unreviewedTransactionsCount,
+    isWheelMenuOpen,
   } = useFinancialStore();
 
   const isLight = themeMode === 'light' || themeMode === 'mono_light';
@@ -230,6 +231,7 @@ export default function HomeScreen({ onNavigateTab }: HomeScreenProps) {
       />
 
       <ScrollView
+        scrollEnabled={!isWheelMenuOpen}
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

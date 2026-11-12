@@ -6,7 +6,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { AppState, StatusBar, StyleSheet } from 'react-native';
+import { AppState, StyleSheet } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -28,7 +29,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 
 import { Colors, PaperTheme } from '@/theme';
-import { useFinancialStore } from '@/stores';
+import { useFinancialStore, useThemeStore } from '@/stores';
 import { AiIntelligenceService } from '@/services/aiIntelligenceService';
 import { NotificationService } from '@/services/notificationService';
 import { DynamicIconService } from '@/services';
@@ -157,7 +158,8 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router]);
 
   const { themeMode } = useFinancialStore();
-  const isLight = themeMode === 'light' || themeMode === 'mono_light';
+  const uiStyle = useThemeStore((s) => s.uiStyle);
+  const isLight = uiStyle === 'minimal' || themeMode === 'light' || themeMode === 'mono_light';
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -167,10 +169,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={[styles.root, { backgroundColor: Colors.surface }]}>
       <SafeAreaProvider>
         <PaperProvider theme={PaperTheme}>
-          <StatusBar
-            barStyle={isLight ? 'dark-content' : 'light-content'}
-            backgroundColor={Colors.surface}
-          />
+          <StatusBar style={isLight ? 'dark' : 'light'} />
           <Stack
             screenOptions={{
               headerShown: false,

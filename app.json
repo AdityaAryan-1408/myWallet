@@ -2,7 +2,7 @@
   "expo": {
     "name": "MyWallet",
     "slug": "MyWallet",
-    "version": "3.0.5",
+    "version": "4.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mywallet",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.aditya.mywallet",
-      "versionCode": 23,
+      "versionCode": 24,
       "adaptiveIcon": {
         "backgroundColor": "#101319",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,7 +50,11 @@
           "color": "#D4FF32",
           "defaultChannel": "channel_general"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
